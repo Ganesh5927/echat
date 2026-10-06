@@ -45,11 +45,11 @@ The system defines the following assets:
 
 ### 1. Malicious relay server
 
-The future relay may inspect packet metadata and ciphertext. Phase 3 locally encrypts text content with AES-256-GCM, but no relay exists yet. Device/session references, type, message ID, sequence, nonce, ciphertext size, tag, and optional transport hints remain visible in the packet.
+The relay receives and queues opaque Phase 3 packets. AES-256-GCM protects text content, but device/session references, type, message ID, sequence, nonce, ciphertext size, tag, and optional transport hints remain visible. The relay also sees route IDs, packet IDs, expiry, queue timing, and connection metadata. Relay-side ciphertext-only behavior is tested in-process; no anonymity claim is made.
 
 ### 2. Database attacker
 
-No message database exists yet. A future database must contain ciphertext packets only and must not contain plaintext conversation history or private keys.
+The relay queue is in-memory and volatile. Locally, message and contact-trust records can be encrypted with AES-GCM before file persistence. The host must supply and protect the local key; the contact-store adapter is not yet wired into the mobile application. File counts, sizes, and access patterns remain observable, and deletion is not guaranteed secure erasure.
 
 ### 3. Network attacker
 
@@ -57,7 +57,7 @@ A passive or active network attacker should not be able to read message contents
 
 ### 4. Man-in-the-middle attacker
 
-A MitM attacker cannot succeed if the session is authenticated and identity verification is enforced. The receiver must validate identity and message authentication before decryption.
+A MitM may substitute public identity data before initial verification. QR parsing checks schema and key-fingerprint consistency, but users must compare fingerprints through a trusted channel and explicitly verify the contact. Changed keys block messaging pending explicit re-verification; old sessions remain pinned to the old key. The app does not yet provide the user-facing comparison/scanning flow.
 
 ### 5. Malicious client
 
@@ -75,11 +75,15 @@ A fully compromised endpoint can read plaintext displayed locally, monitor keys 
 
 A malicious contact may send invalid content, social-engineer users, or attempt to exploit replay conditions. The system mitigates this with verification, authenticated sessions, recipient validation, and replay protection.
 
-### 9. Replay attacker
+### 9. Revoked or changed contact device
+
+Local revocation and changed-key states are enforced by the messaging coordinator before sends, inbound decryption, and acknowledgements. Revoked records remain tombstones and cannot be restored by rescanning. Revocation is local only; it is not broadcast to other contacts or devices. Direct use of lower-level protocol/session APIs can bypass this application trust gate.
+
+### 10. Replay attacker
 
 A replay attacker re-sends prior valid packets to trigger duplicate processing. The protocol must detect duplicates via message IDs and session sequence state.
 
-### 10. Traffic-analysis observer
+### 11. Traffic-analysis observer
 
 An observer can infer timing, packet sizes, and connection metadata. eChat minimizes metadata but cannot claim complete elimination of traffic patterns.
 
@@ -96,4 +100,4 @@ The following are unavoidable in a real system:
 
 The project must document both the goals and residual risk. Security is not claimed by adding a cryptographic library to the stack; it is only valid when the protocol, storage, validation, and operational controls are correct and tested.
 
-Phase 3 uses mature cryptographic primitives from `cryptography`, but the eChat handshake, message-key derivation, and envelope composition are project-specific and have not been independently audited. This does not implement Double Ratchet, post-compromise security, per-message forward secrecy, relay integration, or a production message lifecycle. Passing unit tests does not make the messaging protocol production-approved.
+The eChat handshake, message-key derivation, and envelope composition are project-specific and have not been independently audited. This does not implement Double Ratchet, post-compromise security, per-message forward secrecy, remote revocation propagation, or a production contact-management workflow. Passing unit tests does not make the messaging protocol production-approved.

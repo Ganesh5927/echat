@@ -9,6 +9,8 @@ environment:
 dependencies:
   crypto: ^3.0.7
   cryptography: ^2.7.1
+  echat_identity:
+    path: ../identity
 
 dev_dependencies:
   test: ^1.25.0

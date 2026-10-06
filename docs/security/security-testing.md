@@ -71,6 +71,10 @@ The Phase 3 protocol package tests exercise two local devices and cover AES-GCM 
 
 Messaging Core tests cover encrypted file-store round trips and wrong-key rejection; offline queueing and reconnect with the same message ID and serialized ciphertext; incoming duplicate delivery after a lost acknowledgement; tampering without local persistence or relay acknowledgement; and an in-process HTTPS/relay end-to-end flow that checks the submitted body contains no message plaintext or key fields. They do not validate platform key-provider integration, durable session state across process restart, deployed TLS, cross-process storage locking, background sync, or production relay persistence.
 
+## Trust and device-security tests
+
+Identity tests cover exact public-only QR fields, public-key fingerprint validation, unverified and verified states, changed-key detection, explicit candidate re-verification, and revoked tombstones. Storage tests confirm encrypted trust-state persistence across reconstruction and failure with the wrong key. Messaging tests confirm unverified, changed-key/stale-session, and revoked peers cannot send or be acknowledged. These tests do not provide QR UI, human fingerprint comparison, remote revocation propagation, or protection from direct use of the lower-level session/protocol APIs.
+
 ## Documentation requirement
 
 All security tests must be tied to a documented threat and a specific expected security property.

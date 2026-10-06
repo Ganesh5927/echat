@@ -37,13 +37,19 @@ This enforces the separation between cryptographic identity and application pref
 
 ## Limitations
 
-The current implementation intentionally does not include:
+The trust core provides strict public QR validation, explicit verification, changed-key candidate tracking, explicit re-verification, local revocation tombstones, and messaging gates tied to the session's pinned peer key. Encrypted contact persistence is available through an adapter with an injected key provider.
+
+The current implementation still does not include:
 
 - multi-device key syncing
 - server-side private-key backup
 - device registration on a remote backend
-- full contact verification exchange
+- QR scanning/contact-management UI or an independently verified out-of-band fingerprint channel
+- wiring the encrypted contact store to the mobile app's secure key provider
+- remote revocation distribution or notification
 - key recovery via escrow or social recovery
+
+Revocation is local to one installation. The low-level session and protocol APIs remain usable independently; trust enforcement is applied by the messaging coordinator.
 
 ## Threat assumptions
 

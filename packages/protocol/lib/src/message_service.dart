@@ -19,6 +19,9 @@ class MessageService {
   final String _localDeviceId;
   final AesGcm _aead = AesGcm.with256bits(nonceLength: 12);
 
+  Future<SessionRecord?> getSessionRecord(String sessionId) =>
+      _sessionService.getSession(sessionId);
+
   Future<TransportPacket> sendEncryptedMessage({
     required String sessionId,
     required String plaintext,

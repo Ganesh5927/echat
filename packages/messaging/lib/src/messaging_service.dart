@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:echat_identity/echat_identity.dart';
 import 'package:echat_protocol/echat_protocol.dart';
 import 'package:echat_storage/echat_storage.dart';
 import 'package:echat_transport/echat_transport.dart';
@@ -33,6 +34,7 @@ class MessagingService {
     required MessageService protocol,
     required PacketTransport transport,
     required EncryptedMessageStore store,
+    required ContactTrustService contactTrust,
     required String localDeviceId,
     this.messageLifetime = const Duration(hours: 24),
     this.maxPacketsPerSync = 100,
@@ -40,6 +42,7 @@ class MessagingService {
   }) : _protocol = protocol,
        _transport = transport,
        _store = store,
+       _contactTrust = contactTrust,
        _localDeviceId = localDeviceId,
        _clock = clock ?? DateTime.now {
     if (messageLifetime <= Duration.zero || maxPacketsPerSync < 1) {
@@ -50,6 +53,7 @@ class MessagingService {
   final MessageService _protocol;
   final PacketTransport _transport;
   final EncryptedMessageStore _store;
+  final ContactTrustService _contactTrust;
   final String _localDeviceId;
   final DateTime Function() _clock;
   final Duration messageLifetime;
@@ -58,25 +62,40 @@ class MessagingService {
 
   Future<StoredMessage> sendTextMessage({
     required String sessionId,
+    required String recipientDeviceId,
     required String plaintext,
   }) async {
-    final packet = await _protocol.sendEncryptedMessage(
-      sessionId: sessionId,
-      plaintext: plaintext,
+    final session = await _protocol.getSessionRecord(sessionId);
+    if (session == null) {
+      throw const MessagingException('session_not_found');
+    }
+    final message = await _contactTrust.withTrustedSession(
+      session,
+      recipientDeviceId,
+      () async {
+        final packet = await _protocol.sendEncryptedMessage(
+          sessionId: sessionId,
+          plaintext: plaintext,
+        );
+        if (packet.envelope.recipientDeviceId != recipientDeviceId) {
+          throw const MessagingException('session_peer_mismatch');
+        }
+        final now = _clock().toUtc();
+        final message = StoredMessage(
+          messageId: packet.envelope.messageId,
+          sessionId: packet.envelope.sessionId,
+          peerDeviceId: packet.envelope.recipientDeviceId,
+          direction: MessageDirection.outgoing,
+          state: MessageState.queued,
+          plaintext: plaintext,
+          serializedPacket: packet.toCanonicalJson(),
+          createdAt: now,
+          expiresAt: now.add(messageLifetime),
+        );
+        await _store.saveMessage(message);
+        return message;
+      },
     );
-    final now = _clock().toUtc();
-    final message = StoredMessage(
-      messageId: packet.envelope.messageId,
-      sessionId: packet.envelope.sessionId,
-      peerDeviceId: packet.envelope.recipientDeviceId,
-      direction: MessageDirection.outgoing,
-      state: MessageState.queued,
-      plaintext: plaintext,
-      serializedPacket: packet.toCanonicalJson(),
-      createdAt: now,
-      expiresAt: now.add(messageLifetime),
-    );
-    await _store.saveMessage(message);
     await _submitIfConnected(message);
     return (await _store.getMessage(message.messageId))!;
   }
@@ -134,28 +153,38 @@ class MessagingService {
     if (_transport.connectionState != TransportConnectionState.connected) {
       return false;
     }
-    final packet = PacketSubmission(
-      packetId: message.messageId,
-      recipientRouteId: message.peerDeviceId,
-      expiresAt: message.expiresAt,
-      encryptedPacket: utf8.encode(message.serializedPacket),
-    );
-    try {
-      final receipt = await _transport.sendPacket(packet);
-      if (receipt.packetId != message.messageId ||
-          !const {
-            'queued',
-            'duplicate',
-            'delivered',
-            'acknowledged',
-          }.contains(receipt.state)) {
-        throw const MessagingException('invalid_submission_receipt');
-      }
-      await _store.markSubmitted(message.messageId);
-      return true;
-    } on TransportException {
-      return false;
+    final session = await _protocol.getSessionRecord(message.sessionId);
+    if (session == null) {
+      throw const MessagingException('session_not_found');
     }
+    return _contactTrust.withTrustedSession(
+      session,
+      message.peerDeviceId,
+      () async {
+        final packet = PacketSubmission(
+          packetId: message.messageId,
+          recipientRouteId: message.peerDeviceId,
+          expiresAt: message.expiresAt,
+          encryptedPacket: utf8.encode(message.serializedPacket),
+        );
+        try {
+          final receipt = await _transport.sendPacket(packet);
+          if (receipt.packetId != message.messageId ||
+              !const {
+                'queued',
+                'duplicate',
+                'delivered',
+                'acknowledged',
+              }.contains(receipt.state)) {
+            throw const MessagingException('invalid_submission_receipt');
+          }
+          await _store.markSubmitted(message.messageId);
+          return true;
+        } on TransportException {
+          return false;
+        }
+      },
+    );
   }
 
   Future<bool> _acceptDelivery(DeliveredPacket delivered) async {
@@ -170,37 +199,47 @@ class MessagingService {
       throw const MessagingException('delivery_message_mismatch');
     }
 
-    final existing = await _store.getMessage(delivered.packetId);
-    if (existing != null) {
-      if (existing.direction != MessageDirection.incoming ||
-          existing.serializedPacket != serialized) {
-        throw const MessagingException('message_id_conflict');
-      }
-      await _transport.acknowledge(delivered.packetId);
-      return true;
+    final session = await _protocol.getSessionRecord(envelope.sessionId);
+    if (session == null) {
+      throw const MessagingException('session_not_found');
     }
+    return _contactTrust.withTrustedSession(
+      session,
+      envelope.senderDeviceId,
+      () async {
+        final existing = await _store.getMessage(delivered.packetId);
+        if (existing != null) {
+          if (existing.direction != MessageDirection.incoming ||
+              existing.serializedPacket != serialized) {
+            throw const MessagingException('message_id_conflict');
+          }
+          await _transport.acknowledge(delivered.packetId);
+          return true;
+        }
 
-    await _protocol.decryptIncomingMessage(
-      serialized,
-      onAuthenticated: (plaintext, authenticatedPacket) async {
-        final authenticatedEnvelope = authenticatedPacket.envelope;
-        await _store.saveMessage(
-          StoredMessage(
-            messageId: authenticatedEnvelope.messageId,
-            sessionId: authenticatedEnvelope.sessionId,
-            peerDeviceId: authenticatedEnvelope.senderDeviceId,
-            direction: MessageDirection.incoming,
-            state: MessageState.received,
-            plaintext: plaintext,
-            serializedPacket: serialized,
-            createdAt: delivered.createdAt,
-            expiresAt: delivered.expiresAt,
-          ),
+        await _protocol.decryptIncomingMessage(
+          serialized,
+          onAuthenticated: (plaintext, authenticatedPacket) async {
+            final authenticatedEnvelope = authenticatedPacket.envelope;
+            await _store.saveMessage(
+              StoredMessage(
+                messageId: authenticatedEnvelope.messageId,
+                sessionId: authenticatedEnvelope.sessionId,
+                peerDeviceId: authenticatedEnvelope.senderDeviceId,
+                direction: MessageDirection.incoming,
+                state: MessageState.received,
+                plaintext: plaintext,
+                serializedPacket: serialized,
+                createdAt: delivered.createdAt,
+                expiresAt: delivered.expiresAt,
+              ),
+            );
+          },
         );
+        await _transport.acknowledge(delivered.packetId);
+        return false;
       },
     );
-    await _transport.acknowledge(delivered.packetId);
-    return false;
   }
 
   Future<T> _serializedSync<T>(Future<T> Function() action) {

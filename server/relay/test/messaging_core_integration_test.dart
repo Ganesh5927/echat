@@ -37,6 +37,7 @@ class _Harness {
     required this.senderMessaging,
     required this.receiverMessaging,
     required this.receiverStore,
+    required this.senderTrust,
     required this.senderTransport,
     required this.receiverTransport,
     required this.service,
@@ -49,6 +50,7 @@ class _Harness {
   final MessagingService senderMessaging;
   final MessagingService receiverMessaging;
   final EncryptedMessageStore receiverStore;
+  final ContactTrustService senderTrust;
   final HttpsRelayTransport senderTransport;
   final HttpsRelayTransport receiverTransport;
   final RelayService service;
@@ -61,6 +63,10 @@ class _Harness {
     );
     final sender = await senderIdentity.createIdentity();
     final receiver = await receiverIdentity.createIdentity();
+    final senderTrust = ContactTrustService(store: MemoryContactTrustStore());
+    final receiverTrust = ContactTrustService(store: MemoryContactTrustStore());
+    await senderTrust.verifyContact(senderIdentity.createQrPayload(receiver));
+    await receiverTrust.verifyContact(receiverIdentity.createQrPayload(sender));
     final senderSession = SessionService(
       identityService: senderIdentity,
       sessionStore: MemorySecureSessionStore(),
@@ -141,15 +147,18 @@ class _Harness {
           backend: MemoryEncryptedRecordBackend(),
           keyProvider: () async => SecretKey(List<int>.filled(32, 31)),
         ),
+        contactTrust: senderTrust,
         localDeviceId: sender.deviceId,
       ),
       receiverMessaging: MessagingService(
         protocol: receiverMessages,
         transport: receiverTransport,
         store: receiverStore,
+        contactTrust: receiverTrust,
         localDeviceId: receiver.deviceId,
       ),
       receiverStore: receiverStore,
+      senderTrust: senderTrust,
       senderTransport: senderTransport,
       receiverTransport: receiverTransport,
       service: service,
@@ -166,6 +175,7 @@ void main() {
       const plaintext = 'only-the-endpoints-know-this';
       final queued = await harness.senderMessaging.sendTextMessage(
         sessionId: harness.sessionId,
+        recipientDeviceId: harness.receiver.deviceId,
         plaintext: plaintext,
       );
 

@@ -6,6 +6,8 @@
 
 The encryption key is supplied by `LocalStorageKeyProvider`. The storage package does not create or persist the key, and the Flutter app does not yet connect this provider to platform secure storage. The existing identity and session test stores are in-memory implementations; durable identity/session storage is not part of this milestone.
 
+`EncryptedContactTrustStore` uses the same AEAD boundary for contact keys, fingerprints, and trust/revocation states. Message and contact adapters require separate backend directories because each adapter expects to decrypt every record returned by its backend.
+
 ```text
 Planned local encrypted database
   ├─ conversations

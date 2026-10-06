@@ -41,6 +41,8 @@ The messaging core now sends the serialized Phase 3 packet through the Phase 4 r
 
 The local file store encrypts message records, but filesystem activity, record count, and ciphertext sizes remain observable. These package-level tests are not a deployment or anonymity claim.
 
+Contact QR payloads contain only a version, device identifier, public key, fingerprint, and creation timestamp. Contact trust/revocation state is local and is not sent to the relay; the encrypted persistence adapter protects it only when the host supplies a protected key. Device identifiers and fingerprints remain identifying metadata when QR contents are shared.
+
 ## Privacy goals
 
 The system should minimize metadata by:

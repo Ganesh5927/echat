@@ -42,6 +42,8 @@ The product should expose a privacy dashboard including:
 
 ## Limits and assumptions
 
+Contact trust and revocation records are local data and can be stored using the AES-GCM contact-store adapter. The mobile application does not yet wire the adapter to a platform-protected key or expose a contact-trust UI. QR payloads reveal a device ID, public key, fingerprint, version, and identity creation time to whoever scans them. Trust state and revocation are not synchronized or sent to the relay.
+
 Privacy design does not eliminate all risk. A relay provider may still observe operational metadata, and the user may still leak information through connection patterns, device use, or social context.
 
 The platform should provide clear disclosure and secure defaults rather than over-claiming privacy guarantees.

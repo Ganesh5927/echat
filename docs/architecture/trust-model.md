@@ -52,6 +52,12 @@ To minimize exposure:
 - avoid logging plaintext or decrypted message content
 - use minimal server-side metadata and explicit retention policies
 
+## Local Contact Trust
+
+The client validates the QR schema and recomputes the public-key fingerprint. Observing a contact does not verify it; explicit confirmation is required. A changed key remains a candidate until explicit re-verification, and a session pinned to the old key remains blocked. Local revocation is retained as a tombstone and checked by the messaging coordinator before sends, inbound processing, and duplicate acknowledgements.
+
+Contact records can be persisted through the AES-GCM encrypted trust-store adapter with a host-provided key. The mobile app does not yet wire this adapter or provide QR scanning, fingerprint comparison, contact management, or revocation UI. Revocation is not propagated to other devices or the server, and low-level session APIs do not enforce the contact policy by themselves.
+
 ## Security assumptions
 
 The trust model assumes that:

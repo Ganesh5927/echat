@@ -58,7 +58,9 @@ Rotation must include:
 
 ## Device revocation
 
-Revocation is a security signal that a device should no longer be trusted. The system should:
+The contact-trust service can locally revoke a device and retain a tombstone so that a QR rescan cannot silently restore trust. The messaging coordinator checks this state before sending, inbound processing, and acknowledgements. This revocation is not sent to the relay or other contacts, and existing low-level session records are not deleted automatically.
+
+The client should eventually:
 
 - mark the device invalid in local state
 - notify peer devices of the revocation

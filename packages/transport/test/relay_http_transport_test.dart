@@ -8,7 +8,6 @@ import 'package:test/test.dart';
 void main() {
   group('HttpsRelayTransport', () {
     const packetId = '7b3a7b00-9d98-4f47-9334-cbcd1f8342cd';
-    const senderRoute = 'device_A_00001';
     const recipientRoute = 'device_B_00002';
     final expiresAt = DateTime.utc(2026, 10, 7);
     final encryptedBytes = <int>[0, 1, 2, 254, 255];

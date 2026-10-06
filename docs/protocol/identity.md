@@ -1,10 +1,10 @@
 # Identity architecture
 
-## Implementation status: Phase 1
+## Implementation status: identity and local trust core
 
-The repository currently implements the device identity foundation for a single eChat device. The actual code uses the `cryptography` Dart package with `Ed25519` key generation, stores private key material in secure platform-backed storage, exposes a public identity representation, generates a verification fingerprint, supports persistence/reload/deletion/rotation, and keeps private material out of the QR payload.
+The repository implements Ed25519 device identities, public fingerprints, and a local contact-trust service. QR payload parsing enforces an exact public-only schema and recomputes the SHA-256 fingerprint from the 32-byte public key. Contact states are `unverified`, `verified`, `identityChanged`, and `revoked`.
 
-This milestone intentionally does not include server-side private-key backup, multi-device synchronization, or full contact agreement flows.
+Contact trust can use the AES-GCM encrypted storage adapter through an injected local key provider. This adapter is not yet wired into the mobile app or a contact-management UI. There is no server-side private-key backup, contact discovery, remote revocation broadcast, or multi-device synchronization.
 
 ## Design goal
 
@@ -61,7 +61,7 @@ Public identity must be exchanged via a verified channel. QR exchange is the def
 
 ## QR verification flow
 
-The QR code contains public identity information only. It must never expose private keys.
+The QR code contains only version, device ID, public-key PEM, fingerprint, and identity creation time. Parsing rejects extra fields, private-key PEM, unsupported versions, malformed public keys, and fingerprint mismatches. It must never expose private keys or session secrets.
 
 The user should be able to compare:
 
@@ -70,7 +70,7 @@ The user should be able to compare:
 - contact name or alias
 - verification metadata
 
-The goal is to ensure that the public key they received corresponds to the intended contact.
+The user must compare the fingerprint through a trusted channel before explicitly verifying the contact. Parsing or observing a QR marks a new contact `unverified`; it does not establish trust.
 
 ## Device registration
 
@@ -84,15 +84,15 @@ When a device is first created:
 
 ## Identity verification
 
-Contact verification is a cryptographic step, not a phone-number check. The flow should include:
+Contact verification is a cryptographic step, not a phone-number check. The implemented library flow is:
 
-- scan contact QR
-- fetch public identity bundle
-- verify fingerprint against the expected contact identifier
-- confirm the user wants to trust the identity
-- establish an authenticated session
+- parse and validate the exact public QR payload
+- observe it locally as `unverified`
+- compare its fingerprint with the expected contact through a trusted channel
+- explicitly verify the contact
+- establish a session pinned to that public key
 
-If verification fails, the session must not proceed.
+The messaging coordinator requires a verified contact whose key exactly matches the session's pinned remote identity key before sending or accepting/acknowledging messages. Direct use of lower-level session/protocol APIs does not itself perform contact-trust checks.
 
 ## Device revocation
 
@@ -103,18 +103,11 @@ A device may be revoked when:
 - a malicious or compromised state is detected
 - a user removes the device from their account
 
-Revocation must invalidate the device identity and lead to a session failure or a re-verification flow for that device.
+`revokeContact` records a local revoked tombstone. Messaging operations fail closed for the revoked peer, including queued sends and inbound duplicate acknowledgements. Rescanning or calling normal verification cannot clear the tombstone. Revocation is not broadcast to the peer or relay, and low-level session APIs are not destroyed automatically.
 
 ## Identity changes and rotation
 
-Identity changes are not a simple “rekey everything” operation. The system should support:
-
-- key rotation for a device when a compromise is suspected
-- re-verification of contacts after key change
-- explicit notification that identity changed
-- a bounded state where old keys remain valid until re-establishment
-
-This must be documented and tested. The system must not silently continue with a changed identity while claiming verification.
+When a previously observed device ID presents a different public key, the trust service keeps the previous key pinned, stores the new key as a candidate, and marks the contact `identityChanged`. Messaging is blocked until `reverifyChangedIdentity` explicitly accepts that candidate. Even then, sessions pinned to the old key remain unusable; a new authenticated session is required. Automatic key-change discovery and user-facing notifications do not exist yet.
 
 ## Security assumptions and limitations
 

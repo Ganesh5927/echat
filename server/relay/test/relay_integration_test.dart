@@ -574,7 +574,7 @@ void main() {
       endpoint: Uri.https('relay.test'),
       credentialProvider: () async => _senderToken,
       clientFactory: () => MockClient((httpRequest) async {
-        final request = httpRequest as http.Request;
+        final request = httpRequest;
         observedBodies.add(request.body);
         return _sendToShelf(api, request);
       }),
@@ -583,7 +583,7 @@ void main() {
       endpoint: Uri.https('relay.test'),
       credentialProvider: () async => _recipientToken,
       clientFactory: () => MockClient((httpRequest) async {
-        return _sendToShelf(api, httpRequest as http.Request);
+        return _sendToShelf(api, httpRequest);
       }),
     );
 
