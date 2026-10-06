@@ -185,7 +185,10 @@ class _Harness {
   final EncryptedMessageStore senderStore;
   final EncryptedMessageStore receiverStore;
 
-  static Future<_Harness> create({bool verifyContacts = true}) async {
+  static Future<_Harness> create({
+    bool verifyContacts = true,
+    bool verifyReceiver = true,
+  }) async {
     final senderIdentity = IdentityService(store: MemorySecureIdentityStore());
     final receiverIdentity = IdentityService(
       store: MemorySecureIdentityStore(),
@@ -196,9 +199,15 @@ class _Harness {
     final receiverTrust = ContactTrustService(store: MemoryContactTrustStore());
     if (verifyContacts) {
       await senderTrust.verifyContact(senderIdentity.createQrPayload(receiver));
-      await receiverTrust.verifyContact(
-        receiverIdentity.createQrPayload(sender),
-      );
+      if (verifyReceiver) {
+        await receiverTrust.verifyContact(
+          receiverIdentity.createQrPayload(sender),
+        );
+      } else {
+        await receiverTrust.observeIdentity(
+          receiverIdentity.createQrPayload(sender),
+        );
+      }
     } else {
       await senderTrust.observeIdentity(
         senderIdentity.createQrPayload(receiver),
@@ -388,6 +397,24 @@ void main() {
     },
   );
 
+  test('unverified recipient cannot decrypt, store, or acknowledge', () async {
+    final harness = await _Harness.create(verifyReceiver: false);
+    await harness.senderMessaging.sendTextMessage(
+      sessionId: harness.sessionId,
+      recipientDeviceId: harness.receiver.deviceId,
+      plaintext: 'must remain unprocessed',
+    );
+    await harness.senderMessaging.synchronize();
+
+    await expectLater(
+      harness.receiverMessaging.synchronize(),
+      throwsA(isA<ContactTrustException>()),
+    );
+    expect(await harness.receiverStore.listMessages(), isEmpty);
+    expect(harness.relay.pendingCount, 1);
+    expect(harness.relay.acknowledgements, 0);
+  });
+
   test('changed identity and stale session key cannot send', () async {
     final harness = await _Harness.create();
     final replacementIdentity = IdentityService(
@@ -443,5 +470,24 @@ void main() {
     expect(await harness.receiverStore.listMessages(), isEmpty);
     expect(harness.relay.pendingCount, 1);
     expect(harness.relay.acknowledgements, 0);
+  });
+
+  test('revoked recipient cannot be sent a new message', () async {
+    final harness = await _Harness.create();
+    await harness.senderTrust.revokeContact(harness.receiver.deviceId);
+    final before = await harness.senderSession.getSession(harness.sessionId);
+
+    await expectLater(
+      harness.senderMessaging.sendTextMessage(
+        sessionId: harness.sessionId,
+        recipientDeviceId: harness.receiver.deviceId,
+        plaintext: 'must not reach a revoked contact',
+      ),
+      throwsA(isA<ContactTrustException>()),
+    );
+
+    final after = await harness.senderSession.getSession(harness.sessionId);
+    expect(after?.sendSequence, before?.sendSequence);
+    expect(harness.relay.submissions, isEmpty);
   });
 }

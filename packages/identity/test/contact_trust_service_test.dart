@@ -141,6 +141,10 @@ void main() {
       final revoked = await trust.revokeContact(identity.deviceId);
       expect(revoked.state, ContactTrustState.revoked);
       expect(
+        (await trust.observeIdentity(identity)).state,
+        ContactTrustState.revoked,
+      );
+      expect(
         (await trust.observeIdentity(changed)).state,
         ContactTrustState.revoked,
       );

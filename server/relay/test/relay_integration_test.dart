@@ -46,14 +46,8 @@ class _Harness {
     final bDevice = await bIdentity.createIdentity();
     final aStore = MemorySecureSessionStore();
     final bStore = MemorySecureSessionStore();
-    final aSession = SessionService(
-      identityService: aIdentity,
-      sessionStore: aStore,
-    );
-    final bSession = SessionService(
-      identityService: bIdentity,
-      sessionStore: bStore,
-    );
+    final aSession = SessionService(identityService: aIdentity, sessionStore: aStore);
+    final bSession = SessionService(identityService: bIdentity, sessionStore: bStore);
     final initiation = await aSession.createSession(
       remoteDeviceId: bDevice.deviceId,
       remoteIdentityPublicKeyPem: bDevice.publicKeyPem,
@@ -64,10 +58,7 @@ class _Harness {
       localDeviceId: bDevice.deviceId,
       expectedRemoteIdentityPublicKeyPem: aDevice.publicKeyPem,
     );
-    await aSession.establishAcceptedSession(
-      message: result.response,
-      localDeviceId: aDevice.deviceId,
-    );
+    await aSession.establishAcceptedSession(message: result.response, localDeviceId: aDevice.deviceId);
     return _Harness(
       aDevice: aDevice,
       bDevice: bDevice,
@@ -75,14 +66,8 @@ class _Harness {
       bSession: bSession,
       bIdentity: bIdentity,
       bStore: bStore,
-      aMessages: MessageService(
-        sessionService: aSession,
-        localDeviceId: aDevice.deviceId,
-      ),
-      bMessages: MessageService(
-        sessionService: bSession,
-        localDeviceId: bDevice.deviceId,
-      ),
+      aMessages: MessageService(sessionService: aSession, localDeviceId: aDevice.deviceId),
+      bMessages: MessageService(sessionService: bSession, localDeviceId: bDevice.deviceId),
       sessionId: initiation.sessionId,
     );
   }
@@ -130,11 +115,7 @@ _ApiFixture _api({RelayConfig config = const RelayConfig(), DateTime Function()?
   final service = RelayService(config: config, clock: clock);
   return _ApiFixture(
     service: service,
-    api: RelayApi(
-      service: service,
-      authenticator: _authenticator(),
-      config: config,
-    ),
+    api: RelayApi(service: service, authenticator: _authenticator(), config: config),
   );
 }
 
@@ -156,18 +137,9 @@ String _body(PacketSubmission packet) => jsonEncode(packet.toJson());
 
 Future<http.Response> _sendToShelf(RelayApi api, http.Request request) async {
   final shelfResponse = await api.handler(
-    Request(
-      request.method,
-      request.url,
-      headers: request.headers,
-      body: request.bodyBytes,
-    ),
+    Request(request.method, request.url, headers: request.headers, body: request.bodyBytes),
   );
-  return http.Response(
-    await shelfResponse.readAsString(),
-    shelfResponse.statusCode,
-    headers: shelfResponse.headers,
-  );
+  return http.Response(await shelfResponse.readAsString(), shelfResponse.statusCode, headers: shelfResponse.headers);
 }
 
 void main() {
@@ -175,14 +147,8 @@ void main() {
     test('accepts encrypted packet and duplicate submission is idempotent', () async {
       final api = _api();
       final packet = _packet();
-      final first = await api.service.submit(
-        authenticatedSenderRouteId: _senderRoute,
-        packet: packet,
-      );
-      final duplicate = await api.service.submit(
-        authenticatedSenderRouteId: _senderRoute,
-        packet: packet,
-      );
+      final first = await api.service.submit(authenticatedSenderRouteId: _senderRoute, packet: packet);
+      final duplicate = await api.service.submit(authenticatedSenderRouteId: _senderRoute, packet: packet);
 
       expect(first.state, 'queued');
       expect(duplicate.state, 'duplicate');
@@ -209,17 +175,10 @@ void main() {
     test('offline recipient receives queued packet unchanged and at least once', () async {
       final api = _api();
       final packet = _packet();
-      await api.service.submit(
-        authenticatedSenderRouteId: _senderRoute,
-        packet: packet,
-      );
+      await api.service.submit(authenticatedSenderRouteId: _senderRoute, packet: packet);
 
-      final first = await api.service.receive(
-        authenticatedRecipientRouteId: _recipientRoute,
-      );
-      final retry = await api.service.receive(
-        authenticatedRecipientRouteId: _recipientRoute,
-      );
+      final first = await api.service.receive(authenticatedRecipientRouteId: _recipientRoute);
+      final retry = await api.service.receive(authenticatedRecipientRouteId: _recipientRoute);
 
       expect(first, hasLength(1));
       expect(first.single.encryptedPacket, packet.encryptedPacket);
@@ -230,10 +189,7 @@ void main() {
     test('acknowledgement removes ciphertext and lost ack is idempotent', () async {
       final api = _api();
       final packet = _packet();
-      await api.service.submit(
-        authenticatedSenderRouteId: _senderRoute,
-        packet: packet,
-      );
+      await api.service.submit(authenticatedSenderRouteId: _senderRoute, packet: packet);
       final first = await api.service.acknowledge(
         authenticatedRecipientRouteId: _recipientRoute,
         packetId: packet.packetId,
@@ -242,10 +198,7 @@ void main() {
         authenticatedRecipientRouteId: _recipientRoute,
         packetId: packet.packetId,
       );
-      final duplicateSubmit = await api.service.submit(
-        authenticatedSenderRouteId: _senderRoute,
-        packet: packet,
-      );
+      final duplicateSubmit = await api.service.submit(authenticatedSenderRouteId: _senderRoute, packet: packet);
 
       expect(first.state, 'acknowledged');
       expect(retry.state, 'already_acknowledged');
@@ -256,28 +209,17 @@ void main() {
     test('acknowledged packet stays idempotent until packet expiry', () async {
       var now = DateTime.utc(2026, 10, 6, 12);
       final api = _api(
-        config: const RelayConfig(
-          acknowledgementRetention: Duration(minutes: 5),
-        ),
+        config: const RelayConfig(acknowledgementRetention: Duration(minutes: 5)),
         clock: () => now,
       );
       final packet = _packet(expiresAt: now.add(const Duration(hours: 3)));
-      await api.service.submit(
-        authenticatedSenderRouteId: _senderRoute,
-        packet: packet,
-      );
-      await api.service.acknowledge(
-        authenticatedRecipientRouteId: _recipientRoute,
-        packetId: packet.packetId,
-      );
+      await api.service.submit(authenticatedSenderRouteId: _senderRoute, packet: packet);
+      await api.service.acknowledge(authenticatedRecipientRouteId: _recipientRoute, packetId: packet.packetId);
       now = now.add(const Duration(hours: 1));
       api.service.cleanup();
 
       expect(
-        (await api.service.submit(
-          authenticatedSenderRouteId: _senderRoute,
-          packet: packet,
-        )).state,
+        (await api.service.submit(authenticatedSenderRouteId: _senderRoute, packet: packet)).state,
         'acknowledged',
       );
       expect(api.service.pendingPacketCount, 0);
@@ -287,54 +229,30 @@ void main() {
       var now = DateTime.utc(2026, 10, 6, 12);
       final api = _api(clock: () => now);
       final packet = _packet(expiresAt: now.add(const Duration(minutes: 1)));
-      await api.service.submit(
-        authenticatedSenderRouteId: _senderRoute,
-        packet: packet,
-      );
+      await api.service.submit(authenticatedSenderRouteId: _senderRoute, packet: packet);
       now = now.add(const Duration(minutes: 2));
 
       expect(api.service.cleanup(), 0);
       expect(api.service.pendingPacketCount, 0);
-      expect(
-        (await api.service.submit(
-          authenticatedSenderRouteId: _senderRoute,
-          packet: packet,
-        )).state,
-        'expired',
-      );
-      await expectLater(
-        api.service.receive(authenticatedRecipientRouteId: _recipientRoute),
-        completion(isEmpty),
-      );
+      expect((await api.service.submit(authenticatedSenderRouteId: _senderRoute, packet: packet)).state, 'expired');
+      await expectLater(api.service.receive(authenticatedRecipientRouteId: _recipientRoute), completion(isEmpty));
     });
 
     test('wrong recipient cannot acknowledge another route packet', () async {
       final api = _api();
       final packet = _packet();
-      await api.service.submit(
-        authenticatedSenderRouteId: _senderRoute,
-        packet: packet,
-      );
+      await api.service.submit(authenticatedSenderRouteId: _senderRoute, packet: packet);
       await expectLater(
-        api.service.acknowledge(
-          authenticatedRecipientRouteId: _senderRoute,
-          packetId: packet.packetId,
-        ),
+        api.service.acknowledge(authenticatedRecipientRouteId: _senderRoute, packetId: packet.packetId),
         throwsA(isA<RelayServiceException>()),
       );
     });
 
     test('bounded queue rejects overflow', () async {
       final api = _api(config: const RelayConfig(maxPackets: 1));
-      await api.service.submit(
-        authenticatedSenderRouteId: _senderRoute,
-        packet: _packet(),
-      );
+      await api.service.submit(authenticatedSenderRouteId: _senderRoute, packet: _packet());
       await expectLater(
-        api.service.submit(
-          authenticatedSenderRouteId: _senderRoute,
-          packet: _packet(),
-        ),
+        api.service.submit(authenticatedSenderRouteId: _senderRoute, packet: _packet()),
         throwsA(isA<RelayServiceException>()),
       );
     });
@@ -345,35 +263,21 @@ void main() {
       final api = _api();
       expect((await api.call('GET', '/health')).statusCode, 200);
       expect((await api.call('GET', '/v1/packets')).statusCode, 401);
-      expect(
-        (await api.call('POST', '/v1/packets', body: utf8.encode('{}')))
-            .statusCode,
-        401,
-      );
+      expect((await api.call('POST', '/v1/packets', body: utf8.encode('{}'))).statusCode, 401);
     });
 
     test('accepts packet with sender route bound to authenticated principal', () async {
       final api = _api();
       final packet = _packet();
-      final response = await api.call(
-        'POST',
-        '/v1/packets',
-        token: _senderToken,
-        body: utf8.encode(_body(packet)),
-      );
+      final response = await api.call('POST', '/v1/packets', token: _senderToken, body: utf8.encode(_body(packet)));
       expect(response.statusCode, 202);
       final receipt = jsonDecode(await response.readAsString()) as Map<String, dynamic>;
       expect(receipt['packetId'], packet.packetId);
       expect(receipt['state'], 'queued');
 
-      final delivered = await api.call(
-        'GET',
-        '/v1/packets',
-        token: _recipientToken,
-      );
+      final delivered = await api.call('GET', '/v1/packets', token: _recipientToken);
       expect(delivered.statusCode, 200);
-      final envelope = (jsonDecode(await delivered.readAsString())
-          as Map<String, dynamic>)['packets'] as List<dynamic>;
+      final envelope = (jsonDecode(await delivered.readAsString()) as Map<String, dynamic>)['packets'] as List<dynamic>;
       final bytes = DeliveredPacket.fromJson(envelope.single as Map<String, dynamic>);
       expect(bytes.encryptedPacket, packet.encryptedPacket);
       expect(bytes.senderRouteId, _senderRoute);
@@ -381,12 +285,7 @@ void main() {
 
     test('malformed packets, unsupported versions and routing errors are rejected', () async {
       final api = _api();
-      final malformed = await api.call(
-        'POST',
-        '/v1/packets',
-        token: _senderToken,
-        body: utf8.encode('{not json'),
-      );
+      final malformed = await api.call('POST', '/v1/packets', token: _senderToken, body: utf8.encode('{not json'));
       expect(malformed.statusCode, 400);
 
       final packet = _packet();
@@ -403,21 +302,37 @@ void main() {
         'POST',
         '/v1/packets',
         token: _senderToken,
-        body: utf8.encode(
-          jsonEncode({...packet.toJson(), 'recipientRouteId': '../personal-data'}),
-        ),
+        body: utf8.encode(jsonEncode({...packet.toJson(), 'recipientRouteId': '../personal-data'})),
       );
       expect(wrongRoute.statusCode, 400);
+
+      final invalidBase64 = await api.call(
+        'POST',
+        '/v1/packets',
+        token: _senderToken,
+        body: utf8.encode(jsonEncode({...packet.toJson(), 'encryptedPacket': 'not-base64!'})),
+      );
+      expect(invalidBase64.statusCode, 400);
+
+      final unsupportedField = await api.call(
+        'POST',
+        '/v1/packets',
+        token: _senderToken,
+        body: utf8.encode(jsonEncode({...packet.toJson(), 'plaintext': 'must-not-be-accepted'})),
+      );
+      expect(unsupportedField.statusCode, 400);
+
+      final invalidFieldType = await api.call(
+        'POST',
+        '/v1/packets',
+        token: _senderToken,
+        body: utf8.encode(jsonEncode({...packet.toJson(), 'transportVersion': '1'})),
+      );
+      expect(invalidFieldType.statusCode, 400);
     });
 
     test('request, packet, expiry, queue and rate limits are enforced', () async {
-      final api = _api(
-        config: const RelayConfig(
-          maxRequestBytes: 1200,
-          maxPacketBytes: 128,
-          rateLimitRequests: 10,
-        ),
-      );
+      final api = _api(config: const RelayConfig(maxRequestBytes: 1200, maxPacketBytes: 128, rateLimitRequests: 10));
       final oversizedPacket = PacketSubmission(
         packetId: const Uuid().v4(),
         recipientRouteId: _recipientRoute,
@@ -434,12 +349,7 @@ void main() {
         413,
       );
       expect(
-        (await api.call(
-          'POST',
-          '/v1/packets',
-          token: _senderToken,
-          body: List<int>.filled(1201, 32),
-        )).statusCode,
+        (await api.call('POST', '/v1/packets', token: _senderToken, body: List<int>.filled(1201, 32))).statusCode,
         413,
       );
       expect(
@@ -455,12 +365,7 @@ void main() {
 
       final expired = _packet(expiresAt: DateTime.utc(2020));
       expect(
-        (await api.call(
-          'POST',
-          '/v1/packets',
-          token: _senderToken,
-          body: utf8.encode(_body(expired)),
-        )).statusCode,
+        (await api.call('POST', '/v1/packets', token: _senderToken, body: utf8.encode(_body(expired)))).statusCode,
         410,
       );
     });
@@ -496,15 +401,11 @@ void main() {
         config: const RelayConfig(maxConcurrentRequests: 1),
       );
       final firstRequest = api.handler(
-        Request('GET', Uri.https('relay.test', '/v1/packets'), headers: {
-          'authorization': 'Bearer local-test-token',
-        }),
+        Request('GET', Uri.https('relay.test', '/v1/packets'), headers: {'authorization': 'Bearer local-test-token'}),
       );
       await enteredAuthentication.future;
       final overflowResponse = await api.handler(
-        Request('GET', Uri.https('relay.test', '/v1/packets'), headers: {
-          'authorization': 'Bearer local-test-token',
-        }),
+        Request('GET', Uri.https('relay.test', '/v1/packets'), headers: {'authorization': 'Bearer local-test-token'}),
       );
       continueAuthentication.complete();
       final firstResponse = await firstRequest;
@@ -516,30 +417,11 @@ void main() {
     test('no plaintext, crypto secret, or decrypt endpoint exists in relay behavior', () async {
       final api = _api();
       final packet = _packet(encryptedPacket: utf8.encode('ciphertext-only-bytes'));
-      final response = await api.call(
-        'POST',
-        '/v1/packets',
-        token: _senderToken,
-        body: utf8.encode(_body(packet)),
-      );
+      final response = await api.call('POST', '/v1/packets', token: _senderToken, body: utf8.encode(_body(packet)));
       expect(response.statusCode, 202);
       expect(await response.readAsString(), isNot(contains('ciphertext-only-bytes')));
-      expect(
-        (await api.call(
-          'POST',
-          '/decrypt-message',
-          token: _senderToken,
-        )).statusCode,
-        404,
-      );
-      expect(
-        (await api.call(
-          'GET',
-          '/messages/plaintext',
-          token: _recipientToken,
-        )).statusCode,
-        404,
-      );
+      expect((await api.call('POST', '/decrypt-message', token: _senderToken)).statusCode, 404);
+      expect((await api.call('GET', '/messages/plaintext', token: _recipientToken)).statusCode, 404);
     });
   });
 
@@ -593,12 +475,21 @@ void main() {
     expect(receipt.state, 'queued');
     expect(observedBodies.last, isNot(contains(plaintext)));
     expect(observedBodies.last, isNot(contains('sessionKey')));
+    expect(observedBodies.last, isNot(contains('privateKey')));
+    expect(observedBodies.last, isNot(contains('EphemeralPrivateKey')));
+    expect(observedBodies.last, isNot(contains('localStorageKey')));
+    expect(observedBodies.last, isNot(contains(_senderToken)));
+    expect((jsonDecode(observedBodies.last) as Map<String, dynamic>).keys.toSet(), {
+      'transportVersion',
+      'packetId',
+      'recipientRouteId',
+      'expiresAt',
+      'encryptedPacket',
+    });
     final received = await receiverTransport.receivePackets();
     expect(received, hasLength(1));
     expect(received.single.encryptedPacket, serializedEnvelope);
-    final recovered = await harness.bMessages.decryptIncomingMessage(
-      utf8.decode(received.single.encryptedPacket),
-    );
+    final recovered = await harness.bMessages.decryptIncomingMessage(utf8.decode(received.single.encryptedPacket));
     expect(recovered, plaintext);
     await receiverTransport.acknowledge(request.packetId);
     expect(await receiverTransport.receivePackets(), isEmpty);
@@ -623,9 +514,7 @@ void main() {
         encryptedPacket: originalBytes,
       ),
     );
-    final relayed = (await api.service.receive(
-      authenticatedRecipientRouteId: harness.bDevice.deviceId,
-    )).single;
+    final relayed = (await api.service.receive(authenticatedRecipientRouteId: harness.bDevice.deviceId)).single;
     expect(relayed.encryptedPacket, originalBytes);
 
     final json = jsonDecode(utf8.decode(relayed.encryptedPacket)) as Map<String, dynamic>;

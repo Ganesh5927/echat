@@ -17,7 +17,7 @@ The system defines the following assets:
 
 ## Threat actors
 
-1. Malicious relay server
+1. Malicious or curious relay operator
 2. Database attacker
 3. Network attacker
 4. Man-in-the-middle attacker
@@ -27,25 +27,35 @@ The system defines the following assets:
 8. Malicious contact
 9. Replay attacker
 10. Traffic-analysis observer
+11. Malformed or abusive client
+12. Revoked device attempting to reuse old session data
 
-## Security goals
+## Implemented Controls
 
-- Confidentiality
-- Integrity
-- Authentication
-- Forward secrecy
-- Replay protection
-- Key compromise resilience
-- Secure device identity
-- Local key protection
-- Metadata minimization
-- Secure deletion where technically possible
+- Ed25519 device identity and authenticated X25519 session establishment
+- AES-256-GCM message confidentiality/integrity with authenticated envelope fields
+- per-session sequence/message-ID replay checks; gaps are permitted, stale sequences are rejected
+- exact public QR schema/fingerprint validation and local verified/changed/revoked trust states
+- encrypted local message and contact-trust records with host-provided keys
+- HTTPS-only production transport endpoint validation and bounded relay request/queue/rate limits
+- generic protocol, transport, and relay errors; no application debug/print logging found in audited Dart source
+
+These are implementation controls, not a production security certification.
+
+## Not Implemented / Not Claimed
+
+- no Double Ratchet or post-compromise security
+- no claim of per-message forward secrecy or production-grade anonymity
+- no traffic padding, IP hiding, or protection from traffic analysis
+- no remote revocation distribution or production relay persistence
+- no guarantee of secure deletion or protection from a compromised endpoint
+- no independent audit of the project-specific handshake/message composition
 
 ## Threat analysis
 
 ### 1. Malicious relay server
 
-The relay receives and queues opaque Phase 3 packets. AES-256-GCM protects text content, but device/session references, type, message ID, sequence, nonce, ciphertext size, tag, and optional transport hints remain visible. The relay also sees route IDs, packet IDs, expiry, queue timing, and connection metadata. Relay-side ciphertext-only behavior is tested in-process; no anonymity claim is made.
+The relay may inspect, copy, delay, drop, replay, reorder, or tamper with packets and observe route IDs, packet IDs, expiry, queue timing, IP address, and connection metadata. AES-256-GCM should make message tampering fail authentication, but envelope references, sequence, nonce, ciphertext size, and tag remain visible. Relay behavior is tested in-process; no deployed-server claim is made.
 
 ### 2. Database attacker
 
@@ -53,7 +63,7 @@ The relay queue is in-memory and volatile. Locally, message and contact-trust re
 
 ### 3. Network attacker
 
-A passive or active network attacker should not be able to read message contents or alter ciphertext without detection. TLS and authenticated packet validation mitigate this risk.
+A passive or active network attacker may observe IP addresses, timing, sizes, and availability. TLS protects transport connections when correctly deployed; authenticated message encryption detects packet modification at the receiving endpoint. Tests do not validate deployed TLS.
 
 ### 4. Man-in-the-middle attacker
 
@@ -61,7 +71,7 @@ A MitM may substitute public identity data before initial verification. QR parsi
 
 ### 5. Malicious client
 
-A malicious client may misbehave, but it cannot read encrypted content that is not meant for it. This system expects authenticated sessions and device verification to constrain what a client can do.
+A malformed client can submit oversized, malformed, unsupported-version, wrong-type, invalid-Base64, or expired packets; relay tests cover bounded rejection behavior. A malicious authenticated client can still abuse authorized access within enforced limits.
 
 ### 6. Stolen device
 

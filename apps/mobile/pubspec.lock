@@ -66,7 +66,7 @@ packages:
     source: hosted
     version: "3.0.7"
   cryptography:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: cryptography
       sha256: "3eda3029d34ec9095a27a198ac9785630fe525c0eb6a49f3d575272f8e792ef0"
@@ -80,10 +80,38 @@ packages:
       relative: true
     source: path
     version: "0.1.0"
+  echat_messaging:
+    dependency: "direct main"
+    description:
+      path: "../../packages/messaging"
+      relative: true
+    source: path
+    version: "0.1.0"
+  echat_protocol:
+    dependency: "direct main"
+    description:
+      path: "../../packages/protocol"
+      relative: true
+    source: path
+    version: "0.1.0"
   echat_secure_core:
     dependency: transitive
     description:
       path: "../../packages/secure_core"
+      relative: true
+    source: path
+    version: "0.1.0"
+  echat_storage:
+    dependency: "direct main"
+    description:
+      path: "../../packages/storage"
+      relative: true
+    source: path
+    version: "0.1.0"
+  echat_transport:
+    dependency: "direct main"
+    description:
+      path: "../../packages/transport"
       relative: true
     source: path
     version: "0.1.0"
@@ -198,6 +226,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.2"
+  http:
+    dependency: transitive
+    description:
+      name: http
+      sha256: "87721a4a50b19c7f1d49001e51409bddc46303966ce89a65af4f4e6004896412"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.6.0"
+  http_parser:
+    dependency: transitive
+    description:
+      name: http_parser
+      sha256: "178d74305e7866013777bab2c3d8726205dc5a4dd935297175b19a23a2e66571"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.1.2"
   jni:
     dependency: transitive
     description:
@@ -319,7 +363,7 @@ packages:
     source: hosted
     version: "1.9.1"
   path_provider:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: path_provider
       sha256: a7f4874f987173da295a61c181b8ee71dab59b332a486b391babf26a1b884825

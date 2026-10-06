@@ -11,8 +11,18 @@ dependencies:
     sdk: flutter
   flutter_secure_storage: ^9.2.2
   shared_preferences: ^2.3.0
+  cryptography: ^2.7.1
+  path_provider: ^2.1.5
   echat_identity:
     path: ../../packages/identity
+  echat_messaging:
+    path: ../../packages/messaging
+  echat_protocol:
+    path: ../../packages/protocol
+  echat_storage:
+    path: ../../packages/storage
+  echat_transport:
+    path: ../../packages/transport
 
 dev_dependencies:
   flutter_test:

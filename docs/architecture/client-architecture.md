@@ -6,7 +6,7 @@ The client is the primary trust anchor. It generates identities, stores local en
 
 ## Flutter architecture
 
-The Flutter application should be organized by layer and responsibility rather than by screen alone.
+The Flutter app now boots through `MobileAppServices` and passes a `MessagingController` to the UI. Widgets render app-facing view models; they do not receive protocol envelopes, session secrets, storage backends, or relay packets.
 
 ```text
 Flutter UI
@@ -27,13 +27,11 @@ Flutter UI
 
 ### UI layer
 
-- Splash screen
-- Create identity flow
-- QR display and scanning flows
-- home and contacts screens
-- chat and conversation details screens
-- security and privacy dashboards
-- settings and device management screens
+- bootstrap / local identity creation
+- Home navigation for Conversations, Contacts, and Identity
+- public identity payload paste/import (camera QR scanning is not configured)
+- contact detail, independently compared fingerprint confirmation, key re-verification, and local revocation
+- conversation list and one-to-one message view with local history, pending/outbox state, sync, and trust/session status
 
 ### Application services
 
@@ -54,7 +52,9 @@ Flutter UI
 - decryption verification
 - key rotation and device revocation steps
 
-The protocol package exposes high-level `sendEncryptedMessage` and `decryptIncomingMessage` operations. The UI-independent `echat_messaging` package composes those operations with `PacketTransport` and `EncryptedMessageStore`; widgets do not access cipher or key primitives. The receiver persists authenticated plaintext before the protocol commits replay state, then acknowledges the relay packet. The protocol composition has not been independently audited.
+The protocol package exposes high-level `sendEncryptedMessage` and `decryptIncomingMessage` operations. The UI-independent `echat_messaging` package composes those operations with `PacketTransport` and `EncryptedMessageStore`; `MessagingController` provides UI-safe contacts, conversations, message history, send, sync, and session-state APIs. The receiver persists authenticated plaintext before replay state commits, then acknowledges the relay packet. The protocol composition has not been independently audited.
+
+`SessionService` can create, accept, and finalize its signed existing handshake. The app controller stages and parses those existing JSON messages behind a `SessionExchangeGateway`; the mobile composition currently injects an unavailable gateway. There is no supported network delivery of session-init/session-accept through the relay, so new sessions remain pending until the signed exchange is supplied through a future supported channel. The UI does not equate a button press or relay connection with an established session.
 
 ### Secure crypto adapter
 
@@ -72,7 +72,7 @@ The client stores:
 - attachment references
 - offline queue items
 
-Message records and outbox entries are encrypted per record with AES-256-GCM before the file backend writes them. The encryption key is supplied through an injected provider. A platform secure-storage provider and durable identity/session adapters are not yet wired, so the current app does not yet meet the complete local-first persistence design.
+Message and contact-trust records use separate file-backend directories and AES-256-GCM per-record encryption. A random local storage key is created once and held through `FlutterSecureStorage`; identity private keys and session secret bundles also use secure storage. Public identity/session records remain in `SharedPreferences`. Durable session state is thus wired on mobile, but there is no migration, cross-process locking, or secure-erasure guarantee. A credential and HTTPS origin are required before relay transport is configured; none is hardcoded.
 
 ## Security status model
 

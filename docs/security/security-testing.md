@@ -36,11 +36,9 @@ The integration suite must validate:
 
 ## Security test examples
 
-### Server compromise test
+### Relay opacity test
 
-A test must demonstrate that even if an attacker obtains the relay database, they obtain encrypted protocol data rather than plaintext conversations.
-
-This must be executed with the actual implementation and documented as a real architectural result.
+The in-process relay integration test verifies that the request uses only the transport packet schema and contains no plaintext, private-key, session-key, local-storage-key, or test-credential marker. The relay has only an in-memory queue; this is not a database-compromise test or a claim about a deployed service.
 
 ### Network attack test
 
@@ -50,7 +48,7 @@ A test must validate:
 - a network attacker modifies the traffic
 - relay and recipient detect the modification
 - authentication fails as expected
-- TLS is correctly configured and validated
+- deployed TLS is correctly configured and validated (not yet tested)
 
 ## Release gates
 
@@ -74,6 +72,27 @@ Messaging Core tests cover encrypted file-store round trips and wrong-key reject
 ## Trust and device-security tests
 
 Identity tests cover exact public-only QR fields, public-key fingerprint validation, unverified and verified states, changed-key detection, explicit candidate re-verification, and revoked tombstones. Storage tests confirm encrypted trust-state persistence across reconstruction and failure with the wrong key. Messaging tests confirm unverified, changed-key/stale-session, and revoked peers cannot send or be acknowledged. These tests do not provide QR UI, human fingerprint comparison, remote revocation propagation, or protection from direct use of the lower-level session/protocol APIs.
+
+## Mobile application tests
+
+Mobile tests cover dependency composition with injected secure-value storage, key placement outside SharedPreferences, navigation among Contacts/Conversations/Identity, public-payload contact trust display, blocked pending session state, and offline pending-message rendering/retry using the same message ID. These use in-memory transport and record backends; they do not validate platform-specific secure storage, a camera scanner, deployed relay authentication, or network delivery for the session handshake.
+
+## Security Invariants
+
+Implemented invariants and regression coverage:
+
+1. The relay interface has no message decryption key or decryption operation.
+2. Private identity keys remain within the originating device; QR and relay schemas contain public identity data only.
+3. Session roots and per-message keys are not transport or relay fields.
+4. The Messaging Core submits ciphertext packets, never message plaintext; the relay itself treats packet bytes as opaque and cannot validate client encryption.
+5. Plaintext is returned only after AEAD authentication; authenticated plaintext is persisted locally before replay state commits.
+6. Duplicate IDs and stale sequences are rejected; valid sequence gaps remain accepted.
+7. Contact verification, key-change acceptance, and revocation are explicit local trust-state transitions.
+8. Revocation tombstones survive encrypted-store reconstruction; rescanning cannot clear them.
+9. Outbox retry reuses the same serialized encrypted packet and message ID; delivery remains at least once, not exactly once.
+10. Malformed data, authentication failures, wrong recipients, changed/revoked trust, and storage-key failures fail closed.
+
+The test suite is local/in-process and does not establish platform integration, production deployment, or resistance to endpoint compromise.
 
 ## Documentation requirement
 

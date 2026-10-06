@@ -18,7 +18,7 @@ Device A
   -> Device B acknowledges the relay only after local persistence succeeds
 ```
 
-The packages implement the message protocol, HTTPS/in-memory relay, encrypted file-backed message store, and a UI-independent messaging coordinator. The relay queue is still in memory; the local store needs a host-provided platform-secure key. No chat UI, WebSocket, background sync, or production deployment exists.
+The packages and mobile app implement the message protocol, HTTPS/in-memory relay, encrypted file-backed message store, messaging coordinator, and one-to-one UI. The mobile app provides the storage key through Flutter Secure Storage. The relay queue remains in memory; background sync and production deployment do not exist.
 
 ## Existing identity and session foundation
 
@@ -32,6 +32,8 @@ sequenceDiagram
     B->>A: session-accept signed with Ed25519 identity
     A->>A: Verify response and matching session-key fingerprint
 ```
+
+The current mobile app does not configure a transport for session-control messages. The application controller can stage and validate the existing signed session-init/session-accept JSON, but no supported network endpoint carries those messages. The UI therefore shows `request pending` or `response awaiting delivery` and keeps the composer disabled until the existing session service has actually established the session.
 
 ## Local transport exchange
 
@@ -78,4 +80,4 @@ The receiver rejects malformed, unknown-version, noncanonical, wrong-recipient, 
 
 ## Deferred capabilities
 
-Background recovery, persistent relay queues, key-change delivery, revocation delivery, attachments, groups, and multi-device handling are not implemented. Persistent identity/session state is also not wired, so decrypting after process restart is not yet supported. The message/session protocol composition is project-specific and has not been independently audited.
+Background recovery, session-bootstrap network delivery, persistent relay queues, key-change delivery, revocation delivery, attachments, groups, and multi-device handling are not implemented. Restored established sessions require review and are not automatically enabled by the UI. The message/session protocol composition is project-specific and has not been independently audited.

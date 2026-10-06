@@ -24,7 +24,7 @@ The default posture for MVP is:
 - no plaintext logging
 - no plaintext message storage on server
 - minimal relay metadata retention
-- generic push notifications without message contents
+- no push service is implemented; any future push payloads should be generic and omit message contents
 - device-bound identities instead of phone number dependence
 
 ## Privacy dashboard

@@ -249,6 +249,17 @@ void main() {
       );
     });
 
+    test('malformed message ID is rejected before decryption', () async {
+      final harness = await _Harness.create();
+      final packet = await harness.send('invalid message ID');
+      final malformed =
+          jsonDecode(packet.toCanonicalJson()) as Map<String, dynamic>;
+      (malformed['envelope'] as Map<String, dynamic>)['messageId'] =
+          'not-a-uuid';
+
+      await _expectRejectedSerialized(harness.bMessages, jsonEncode(malformed));
+    });
+
     test('modified sender reference is rejected', () async {
       final harness = await _Harness.create();
       final packet = await harness.send('sender tamper');

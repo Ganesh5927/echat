@@ -1,47 +1,46 @@
 # Metadata analysis
 
-## What the server can know
+## Relay-Visible Data
 
-The relay server may necessarily know:
+The relay sees, or can infer from normal operation:
 
-- account or device identifiers
-- approximate connection timing
+- authenticated sender and recipient route IDs
+- packet IDs and recipient route IDs
+- packet submission, polling, acknowledgement, and expiry times
 - IP address or transport-layer information
-- packet sizes
-- queue duration and delivery timestamps
+- packet and HTTP request sizes
+- whether a recipient has pending traffic and queue duration
 - rate limiting and abuse signals
-- push notification metadata
-- contact lookup or public identity availability records
+- HTTPS authorization credentials when validating the transport request
+- message-envelope metadata inside the opaque encrypted-packet bytes: device/session IDs, message ID/type, sequence, key epoch, nonce, ciphertext length, and authentication tag
 
-## What the server mathematically cannot know
+The relay implementation queues packet bytes without parsing the Phase 3 envelope. This is an implementation choice, not a cryptographic protection: envelope fields are visible and could be decoded by a curious or modified relay.
 
-Given a correct end-to-end encrypted design, the server cannot know:
+## Client-Visible Data
 
-- message plaintext
-- attachment plaintext
-- session keys
-- private identity keys
-- local conversation history
-- the exact contents of encrypted payloads
+The sending client handles entered plaintext and its local identity/session state. The receiving client handles authenticated plaintext after decryption, local trust records, and message history. A compromised endpoint can expose these data.
 
-## Why metadata still matters
+## Protected Content
 
-Even when the server cannot decrypt content, the following patterns can still be observed:
+The relay request contains the versioned transport wrapper and serialized Phase 3 packet. Under correct client behavior and secrecy of endpoint keys, AES-256-GCM protects message content. The packet has no private identity key, session root, per-message key, local storage key, or plaintext field. This is an implementation property covered by local integration tests, not proof against compromised clients, malicious builds, or deployment misconfiguration.
 
-- who connected to whom
-- when communication took place
-- how frequently traffic occurs
-- whether a device is online
-- how large the encrypted blob is
-- whether a packet is queued or delivered
+## Implemented Privacy Properties
 
-This is a real limitation of the design and must be openly documented.
+- messages are encrypted on the sending endpoint before relay submission
+- relay packet handling requires only opaque encrypted bytes
+- local message and contact-trust records use AES-GCM with a host-provided key
+- protocol, transport, and relay errors use bounded codes/messages rather than message content or key values
+- no application debug or print logging calls were found in the audited Dart source
 
-The messaging core now sends the serialized Phase 3 packet through the Phase 4 relay. The relay does not parse the envelope in its implementation, but its stored opaque bytes contain visible device and session references, message type and ID, sequence, key epoch, nonce, ciphertext length, authentication tag, and optional transport hints. The relay wrapper also exposes sender/recipient route IDs, packet ID, expiry, packet size, and queue/delivery timing. Message plaintext, identity private keys, and session secrets are not included in the submitted packet.
+## Not Implemented / Unavoidable Metadata
 
-The local file store encrypts message records, but filesystem activity, record count, and ciphertext sizes remain observable. These package-level tests are not a deployment or anonymity claim.
+- IP addresses, connection timing, online/availability patterns, packet sizes, routing IDs, and delivery state are not hidden
+- no traffic padding, batching, onion routing, proxying, or IP masking
+- the relay queue is volatile in-memory state and has no production retention service
+- no deployed-network privacy measurement or anonymity property is claimed
+- local filesystem activity, record counts, ciphertext sizes, and best-effort deletion remain observable
 
-Contact QR payloads contain only a version, device identifier, public key, fingerprint, and creation timestamp. Contact trust/revocation state is local and is not sent to the relay; the encrypted persistence adapter protects it only when the host supplies a protected key. Device identifiers and fingerprints remain identifying metadata when QR contents are shared.
+Contact QR payloads contain a version, device identifier, public key, fingerprint, and creation timestamp. Trust/revocation state is local and is not sent to the relay. Device IDs and fingerprints identify devices when a QR is shared.
 
 ## Privacy goals
 
@@ -55,4 +54,4 @@ The system should minimize metadata by:
 
 ## Explicit non-claims
 
-The project must not claim that eChat is fully untraceable or that metadata is eliminated unless it is proven with actual traffic and deployment analysis.
+eChat is not 100% anonymous, untraceable, or impossible to monitor. This project does not claim forward secrecy, post-compromise security, Double Ratchet, or production-grade anonymity. Tests use local/in-process transports and do not establish production deployment properties.

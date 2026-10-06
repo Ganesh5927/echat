@@ -4,7 +4,7 @@
 
 `packages/storage` provides `EncryptedMessageStore`, which encrypts each complete message record with AES-256-GCM before writing it through a backend. `FileEncryptedRecordBackend` stores only the encoded nonce, ciphertext, and authentication tag in files; the filename is derived from a hash of the message ID. The exact serialized E2E packet and local plaintext are both inside the encrypted record.
 
-The encryption key is supplied by `LocalStorageKeyProvider`. The storage package does not create or persist the key, and the Flutter app does not yet connect this provider to platform secure storage. The existing identity and session test stores are in-memory implementations; durable identity/session storage is not part of this milestone.
+The encryption key is supplied by `LocalStorageKeyProvider`. The mobile composition creates the key on first use and stores its Base64 representation using `FlutterSecureStorage`; it is never written to `SharedPreferences`. Identity private keys and session secret bundles also use Flutter Secure Storage. Public identity and session records are stored separately in `SharedPreferences`.
 
 `EncryptedContactTrustStore` uses the same AEAD boundary for contact keys, fingerprints, and trust/revocation states. Message and contact adapters require separate backend directories because each adapter expects to decrypt every record returned by its backend.
 
@@ -17,7 +17,7 @@ Planned local encrypted database
   ├─ device records
   └─ outbox / pending messages
 
-Required platform secure key storage (provider wiring pending)
+Platform Secure Storage
   ├─ identity private keys
   ├─ key wrapping metadata
   └─ local encryption keys
@@ -25,7 +25,7 @@ Required platform secure key storage (provider wiring pending)
 
 ## Storage protections
 
-The implemented message store uses independent random-nonce AES-256-GCM encryption for records and fails closed when a record cannot be decrypted. A local encryption key is never written by the message store. The host application must provide a stable key from secure OS storage before using the file backend for real user data; an in-memory or hardcoded production key is not acceptable.
+The implemented message and contact-trust stores use separate directories, independent random-nonce AES-256-GCM encryption, and fail closed if a record cannot be decrypted. The key is randomly generated and stored in platform secure storage by the mobile adapter. The host must account for platform backup/restore and key loss; the project has not independently audited the platform plugin or platform-specific secure-storage configuration.
 
 The relay receives only the Phase 3 serialized encrypted packet, not the local plaintext, local storage key, identity private key, or session secret. Message IDs, routing identifiers, packet size, and timing remain observable metadata.
 
