@@ -83,8 +83,7 @@ class MessagingController {
 
   Future<void> activateIdentity(DeviceIdentity identity) async {
     final storedIdentity = await _identityService.loadIdentity();
-    if (storedIdentity == null ||
-        storedIdentity.deviceId != identity.deviceId) {
+    if (storedIdentity == null || storedIdentity.deviceId != identity.deviceId) {
       throw const AppMessagingException('local_identity_unavailable');
     }
     _localDeviceId = storedIdentity.deviceId;
@@ -102,17 +101,12 @@ class MessagingController {
 
   Future<List<AppContact>> contacts() async {
     final records = await _contactTrustService.listContacts();
-    final sessions = await _sessionStore.listSessionRecords();
-    return List.unmodifiable(
-      records.map((record) => _contactView(record, sessions: sessions)),
-    );
+    return List.unmodifiable(records.map(_contactView));
   }
 
   Future<AppContact?> contact(String deviceId) async {
     final record = await _contactTrustService.getContact(deviceId);
-    if (record == null) return null;
-    final sessions = await _sessionStore.listSessionRecords();
-    return _contactView(record, sessions: sessions);
+    return record == null ? null : _contactView(record);
   }
 
   Future<AppContact> observeContactQr(String qrJson) async =>
@@ -219,7 +213,8 @@ class MessagingController {
     try {
       await _sessionExchangeGateway.sendExchange(
         recipientDeviceId: result.record.remoteDeviceId,
-        serializedExchange: _pendingSessionExchanges[result.record.sessionId]!,
+        serializedExchange:
+            _pendingSessionExchanges[result.record.sessionId]!,
       );
     } on Object {
       // The accepted session is not exposed as ready until its response is sent.
@@ -276,11 +271,10 @@ class MessagingController {
     final conversations = <AppConversation>[];
     for (final session in sessions) {
       final peer = contactsById[session.remoteDeviceId];
-      final sessionMessages =
-          allMessages
-              .where((message) => message.sessionId == session.sessionId)
-              .toList()
-            ..sort((left, right) => left.createdAt.compareTo(right.createdAt));
+      final sessionMessages = allMessages
+          .where((message) => message.sessionId == session.sessionId)
+          .toList()
+        ..sort((left, right) => left.createdAt.compareTo(right.createdAt));
       final last = sessionMessages.isEmpty
           ? null
           : _messageView(sessionMessages.last);
@@ -299,11 +293,8 @@ class MessagingController {
       );
     }
     conversations.sort((left, right) {
-      final leftAt =
-          left.lastMessage?.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-      final rightAt =
-          right.lastMessage?.createdAt ??
-          DateTime.fromMillisecondsSinceEpoch(0);
+      final leftAt = left.lastMessage?.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final rightAt = right.lastMessage?.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
       return rightAt.compareTo(leftAt);
     });
     return List.unmodifiable(conversations);
@@ -331,6 +322,58 @@ class MessagingController {
     return _messageView(message);
   }
 
+  Future<AppMessage> retryMessage(String messageId) async {
+    final stored = await _messageStore.getMessage(messageId);
+    if (stored == null || stored.direction != MessageDirection.outgoing) {
+      throw const AppMessagingException('message_not_found');
+    }
+    if (_sessionOverrides[stored.sessionId] != AppSessionStatus.established) {
+      throw const AppMessagingException('session_not_ready');
+    }
+    final session = await _sessionService.getSession(stored.sessionId);
+    if (session == null) {
+      throw const AppMessagingException('session_not_found');
+    }
+    try {
+      await _contactTrustService.withTrustedSession(
+        session,
+        stored.peerDeviceId,
+        () async {
+          if (_packetTransport.connectionState !=
+              TransportConnectionState.connected) {
+            throw const AppMessagingException('transport_not_connected');
+          }
+          final packet = PacketSubmission(
+            packetId: stored.messageId,
+            recipientRouteId: stored.peerDeviceId,
+            expiresAt: stored.expiresAt,
+            encryptedPacket: utf8.encode(stored.serializedPacket),
+          );
+          final receipt = await _packetTransport.sendPacket(packet);
+          if (receipt.packetId != stored.messageId ||
+              !const {'queued', 'duplicate', 'delivered', 'acknowledged'}.contains(
+                receipt.state,
+              )) {
+            throw const AppMessagingException('invalid_submission_receipt');
+          }
+          await _messageStore.markSubmitted(stored.messageId);
+        },
+      );
+    } on Object {
+      await _messageStore.markFailed(messageId);
+      final failed = await _messageStore.getMessage(messageId);
+      if (failed == null) {
+        throw const AppMessagingException('message_not_found');
+      }
+      return _messageView(failed);
+    }
+    final updated = await _messageStore.getMessage(messageId);
+    if (updated == null) {
+      throw const AppMessagingException('message_not_found');
+    }
+    return _messageView(updated);
+  }
+
   Future<AppSyncResult> synchronize() async {
     final messaging = _messagingService;
     if (messaging == null) {
@@ -346,8 +389,7 @@ class MessagingController {
                 message.sessionId == conversation.sessionId &&
                 message.direction == MessageDirection.incoming,
           )) {
-        _sessionOverrides[conversation.sessionId] =
-            AppSessionStatus.established;
+        _sessionOverrides[conversation.sessionId] = AppSessionStatus.established;
       }
     }
     return AppSyncResult(
@@ -366,35 +408,22 @@ class MessagingController {
     return AppSessionStatus.restoredNeedsReview;
   }
 
-  AppContact _contactView(
-    ContactTrustRecord record, {
-    List<SessionRecord> sessions = const [],
-  }) {
-    final peerSessions =
-        sessions
-            .where((session) => session.remoteDeviceId == record.deviceId)
-            .toList()
-          ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
-    return AppContact(
-      deviceId: record.deviceId,
-      displayAlias: record.deviceId,
-      fingerprint: record.state == ContactTrustState.identityChanged
-          ? record.candidateFingerprint ?? record.fingerprint
-          : record.fingerprint,
-      trustStatus: switch (record.state) {
-        ContactTrustState.unverified => AppTrustStatus.unverified,
-        ContactTrustState.verified => AppTrustStatus.verified,
-        ContactTrustState.identityChanged => AppTrustStatus.identityChanged,
-        ContactTrustState.revoked => AppTrustStatus.revoked,
-      },
-      sessionStatus: peerSessions.isEmpty
-          ? AppSessionStatus.notStarted
-          : _sessionStatusForRecord(peerSessions.first),
-      previousFingerprint: record.state == ContactTrustState.identityChanged
-          ? record.fingerprint
-          : null,
-    );
-  }
+  AppContact _contactView(ContactTrustRecord record) => AppContact(
+    deviceId: record.deviceId,
+    displayAlias: record.deviceId,
+    fingerprint: record.state == ContactTrustState.identityChanged
+        ? record.candidateFingerprint ?? record.fingerprint
+        : record.fingerprint,
+    trustStatus: switch (record.state) {
+      ContactTrustState.unverified => AppTrustStatus.unverified,
+      ContactTrustState.verified => AppTrustStatus.verified,
+      ContactTrustState.identityChanged => AppTrustStatus.identityChanged,
+      ContactTrustState.revoked => AppTrustStatus.revoked,
+    },
+    previousFingerprint: record.state == ContactTrustState.identityChanged
+        ? record.fingerprint
+        : null,
+  );
 
   LocalIdentityView _identityView(DeviceIdentity identity) => LocalIdentityView(
     deviceId: identity.deviceId,
@@ -411,6 +440,7 @@ class MessagingController {
       MessageState.queued => AppMessageStatus.pending,
       MessageState.submitted => AppMessageStatus.submittedToRelay,
       MessageState.received => AppMessageStatus.receivedLocally,
+      MessageState.failed => AppMessageStatus.failed,
     },
     createdAt: message.createdAt,
   );
@@ -442,10 +472,8 @@ class MessagingController {
       value.replaceAll(RegExp(r'\s+'), '').toLowerCase();
 
   String _requireLocalDeviceId() =>
-      _localDeviceId ??
-      (throw const AppMessagingException('local_identity_unavailable'));
+      _localDeviceId ?? (throw const AppMessagingException('local_identity_unavailable'));
 
   MessagingService _requireMessagingService() =>
-      _messagingService ??
-      (throw const AppMessagingException('local_identity_unavailable'));
+      _messagingService ?? (throw const AppMessagingException('local_identity_unavailable'));
 }

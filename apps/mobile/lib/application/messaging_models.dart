@@ -11,7 +11,12 @@ enum AppSessionStatus {
 
 enum AppConnectionStatus { notConfigured, disconnected, connecting, connected }
 
-enum AppMessageStatus { pending, submittedToRelay, receivedLocally }
+enum AppMessageStatus {
+  pending,
+  submittedToRelay,
+  receivedLocally,
+  failed,
+}
 
 class LocalIdentityView {
   const LocalIdentityView({
@@ -33,7 +38,6 @@ class AppContact {
     required this.displayAlias,
     required this.fingerprint,
     required this.trustStatus,
-    required this.sessionStatus,
     this.previousFingerprint,
   });
 
@@ -41,7 +45,6 @@ class AppContact {
   final String displayAlias;
   final String fingerprint;
   final AppTrustStatus trustStatus;
-  final AppSessionStatus sessionStatus;
   final String? previousFingerprint;
 }
 
@@ -60,7 +63,15 @@ class AppMessage {
   final AppMessageStatus status;
   final DateTime createdAt;
 }
+class AppMessageSummary {
+  const AppMessageSummary({
+    required this.status,
+    required this.message,
+  });
 
+  final AppMessageStatus status;
+  final String message;
+}
 class AppConversation {
   const AppConversation({
     required this.sessionId,

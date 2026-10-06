@@ -33,6 +33,17 @@ class _MemorySecureValueStore implements SecureValueStore {
   }
 }
 
+class _FailingSecureValueStore implements SecureValueStore {
+  @override
+  Future<void> delete(String key) async => throw StateError('secure storage unavailable');
+
+  @override
+  Future<String?> read(String key) async => throw StateError('secure storage unavailable');
+
+  @override
+  Future<void> write(String key, String value) async => throw StateError('secure storage unavailable');
+}
+
 class _AppHarness {
   _AppHarness({
     required this.services,
@@ -166,6 +177,24 @@ void main() {
     },
   );
 
+  test(
+    'bootstrap falls back to in-memory local services when secure storage fails',
+    () async {
+      final services = await MobileAppServices.bootstrap(
+        secureValueStore: _FailingSecureValueStore(),
+        messageBackend: MemoryEncryptedRecordBackend(),
+        contactTrustBackend: MemoryEncryptedRecordBackend(),
+        packetTransport: UnavailablePacketTransport('secure_storage_unavailable'),
+        sessionExchangeGateway: const UnavailableSessionExchangeGateway(),
+      );
+      expect(services.controller.connectionStatus,
+          AppConnectionStatus.notConfigured);
+      expect(services.controller.hasActiveIdentity, isFalse);
+      expect(services.relayConfigurationMessage,
+          contains('Local secure storage unavailable'));
+    },
+  );
+
   testWidgets(
     'app bootstrap opens contacts, conversations, and identity screens',
     (tester) async {
@@ -288,6 +317,9 @@ void main() {
         isNot(contains('offline body canary')),
       );
 
+      final failed = await harness.services.controller.retryMessage(sent.id);
+      expect(failed.status, AppMessageStatus.failed);
+
       final refreshedConversation =
           (await harness.services.controller.conversations()).single;
       await tester.pumpWidget(
@@ -299,8 +331,8 @@ void main() {
         ),
       );
       await _pumpUntilFound(tester, find.text('offline body canary'));
-      expect(find.text('Pending in encrypted outbox'), findsOneWidget);
-      expect(find.byKey(const Key('offline-banner')), findsOneWidget);
+      expect(find.text('Failed; retry available'), findsOneWidget);
+      expect(find.byKey(Key('retry-message-${sent.id}')), findsOneWidget);
     },
   );
 }

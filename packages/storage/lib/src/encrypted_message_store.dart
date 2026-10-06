@@ -11,7 +11,7 @@ typedef LocalStorageKeyProvider = Future<SecretKey> Function();
 
 enum MessageDirection { outgoing, incoming }
 
-enum MessageState { queued, submitted, received }
+enum MessageState { queued, submitted, received, failed }
 
 class MessageStoreException implements Exception {
   const MessageStoreException(this.code);
@@ -305,7 +305,8 @@ class EncryptedMessageStore {
           .where(
             (message) =>
                 message.direction == MessageDirection.outgoing &&
-                message.state == MessageState.queued,
+                (message.state == MessageState.queued ||
+                    message.state == MessageState.failed),
           )
           .toList()
         ..sort((left, right) => left.createdAt.compareTo(right.createdAt)),
@@ -326,6 +327,23 @@ class EncryptedMessageStore {
         await _encrypt(message.copyWith(state: MessageState.submitted)),
       );
     }
+  });
+
+  Future<void> markFailed(String messageId) => _serialized(() async {
+    final message = await _readMessage(messageId);
+    if (message == null) {
+      throw const MessageStoreException('message_not_found');
+    }
+    if (message.direction != MessageDirection.outgoing) {
+      throw const MessageStoreException('invalid_message_state');
+    }
+    if (message.state == MessageState.failed) {
+      return;
+    }
+    await _backend.write(
+      messageId,
+      await _encrypt(message.copyWith(state: MessageState.failed)),
+    );
   });
 
   Future<void> deleteMessage(String messageId) =>
@@ -455,7 +473,8 @@ class EncryptedMessageStore {
         (previous.state == MessageState.submitted &&
             next.state != MessageState.submitted) ||
         (previous.state == MessageState.received &&
-            next.state != MessageState.received)) {
+            next.state != MessageState.received) ||
+        (previous.state == MessageState.failed && next.state != MessageState.failed)) {
       throw const MessageStoreException('message_id_conflict');
     }
   }

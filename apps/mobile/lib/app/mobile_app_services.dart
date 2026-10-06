@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:echat_identity/echat_identity.dart';
 import 'package:echat_storage/echat_storage.dart';
 import 'package:echat_transport/echat_transport.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -17,6 +18,7 @@ class MobileAppServices {
   MobileAppServices._({
     required this.controller,
     required this.relayConfigurationMessage,
+    required this.messageStore,
   });
 
   static const String relayCredentialStorageKey =
@@ -27,6 +29,7 @@ class MobileAppServices {
 
   final MessagingController controller;
   final String relayConfigurationMessage;
+  final EncryptedMessageStore messageStore;
 
   static Future<MobileAppServices> bootstrap({
     Directory? supportDirectory,
@@ -38,65 +41,151 @@ class MobileAppServices {
     SessionExchangeGateway sessionExchangeGateway =
         const UnavailableSessionExchangeGateway(),
   }) async {
-    final secureValues =
-        secureValueStore ??
-        FlutterSecureValueStore(storage: const FlutterSecureStorage());
-    final root = supportDirectory ?? await getApplicationSupportDirectory();
-    final appDirectory = Directory(
-      '${root.path}${Platform.pathSeparator}echat',
-    );
-    final messageDirectory = Directory(
-      '${appDirectory.path}${Platform.pathSeparator}messages',
-    );
-    final contactDirectory = Directory(
-      '${appDirectory.path}${Platform.pathSeparator}contact-trust',
-    );
-    final keyProvider = AppLocalStorageKeyProvider(store: secureValues);
+    final fallbackSecureStore = _InMemorySecureValueStore();
+    try {
+      final secureValues =
+          secureValueStore ??
+          (kIsWeb
+              ? fallbackSecureStore
+              : FlutterSecureValueStore(storage: const FlutterSecureStorage()));
 
-    final identityService = IdentityService(
-      store: AppSecureIdentityStore(secureStore: secureValues),
-    );
-    final sessionStore = AppSecureSessionStore(secureStore: secureValues);
-    final sessionService = SessionService(
-      identityService: identityService,
-      sessionStore: sessionStore,
-    );
-    final contactTrustStore = EncryptedContactTrustStore(
-      backend:
-          contactTrustBackend ??
-          FileEncryptedRecordBackend(directory: contactDirectory),
-      keyProvider: keyProvider.call,
-    );
-    final messageStore = EncryptedMessageStore(
-      backend:
-          messageBackend ??
-          FileEncryptedRecordBackend(directory: messageDirectory),
-      keyProvider: keyProvider.call,
-    );
-    final configuredTransport = packetTransport == null
-        ? await _buildTransport(
-            relayOrigin: relayOrigin,
-            secureStore: secureValues,
-          )
-        : (packetTransport, 'Transport supplied by application composition.');
-    final trustService = ContactTrustService(store: contactTrustStore);
-    final controller = MessagingController(
-      identityService: identityService,
-      sessionService: sessionService,
-      sessionStore: sessionStore,
-      contactTrustService: trustService,
-      messageStore: messageStore,
-      packetTransport: configuredTransport.$1,
-      sessionExchangeGateway: sessionExchangeGateway,
-    );
+      if (kIsWeb) {
+        final keyProvider = AppLocalStorageKeyProvider(store: secureValues);
+        final identityService = IdentityService(
+          store: AppSecureIdentityStore(secureStore: secureValues),
+        );
+        final sessionStore = AppSecureSessionStore(secureStore: secureValues);
+        final sessionService = SessionService(
+          identityService: identityService,
+          sessionStore: sessionStore,
+        );
+        final contactTrustStore = EncryptedContactTrustStore(
+          backend: MemoryEncryptedRecordBackend(),
+          keyProvider: keyProvider.call,
+        );
+        final messageStore = EncryptedMessageStore(
+          backend: MemoryEncryptedRecordBackend(),
+          keyProvider: keyProvider.call,
+        );
+        final configuredTransport = packetTransport == null
+            ? await _buildTransport(
+                relayOrigin: relayOrigin,
+                secureStore: secureValues,
+              )
+            : (packetTransport, 'Transport supplied by application composition.');
+        final controller = MessagingController(
+          identityService: identityService,
+          sessionService: sessionService,
+          sessionStore: sessionStore,
+          contactTrustService: ContactTrustService(store: contactTrustStore),
+          messageStore: messageStore,
+          packetTransport: configuredTransport.$1,
+          sessionExchangeGateway: sessionExchangeGateway,
+        );
+        return MobileAppServices._(
+          controller: controller,
+          relayConfigurationMessage: configuredTransport.$2,
+          messageStore: messageStore,
+        );
+      }
 
-    final services = MobileAppServices._(
-      controller: controller,
-      relayConfigurationMessage: configuredTransport.$2,
-    );
-    final identity = await identityService.loadIdentity();
-    if (identity != null) await controller.activateIdentity(identity);
-    return services;
+      final root = supportDirectory ?? await getApplicationSupportDirectory();
+      final appDirectory = Directory(
+        '${root.path}${Platform.pathSeparator}echat',
+      );
+      final messageDirectory = Directory(
+        '${appDirectory.path}${Platform.pathSeparator}messages',
+      );
+      final contactDirectory = Directory(
+        '${appDirectory.path}${Platform.pathSeparator}contact-trust',
+      );
+      final keyProvider = AppLocalStorageKeyProvider(store: secureValues);
+
+      final identityService = IdentityService(
+        store: AppSecureIdentityStore(secureStore: secureValues),
+      );
+      final sessionStore = AppSecureSessionStore(secureStore: secureValues);
+      final sessionService = SessionService(
+        identityService: identityService,
+        sessionStore: sessionStore,
+      );
+      final contactTrustStore = EncryptedContactTrustStore(
+        backend:
+            contactTrustBackend ??
+            FileEncryptedRecordBackend(directory: contactDirectory),
+        keyProvider: keyProvider.call,
+      );
+      final messageStore = EncryptedMessageStore(
+        backend:
+            messageBackend ??
+            FileEncryptedRecordBackend(directory: messageDirectory),
+        keyProvider: keyProvider.call,
+      );
+      final configuredTransport = packetTransport == null
+          ? await _buildTransport(
+              relayOrigin: relayOrigin,
+              secureStore: secureValues,
+            )
+          : (packetTransport, 'Transport supplied by application composition.');
+      final trustService = ContactTrustService(store: contactTrustStore);
+      final controller = MessagingController(
+        identityService: identityService,
+        sessionService: sessionService,
+        sessionStore: sessionStore,
+        contactTrustService: trustService,
+        messageStore: messageStore,
+        packetTransport: configuredTransport.$1,
+        sessionExchangeGateway: sessionExchangeGateway,
+      );
+
+      final services = MobileAppServices._(
+        controller: controller,
+        relayConfigurationMessage: configuredTransport.$2,
+        messageStore: messageStore,
+      );
+      final identity = await identityService.loadIdentity();
+      if (identity != null) await controller.activateIdentity(identity);
+      return services;
+    } on Object {
+      final fallbackKeyProvider = AppLocalStorageKeyProvider(
+        store: fallbackSecureStore,
+      );
+      final fallbackIdentityService = IdentityService(
+        store: AppSecureIdentityStore(secureStore: fallbackSecureStore),
+      );
+      final fallbackSessionStore = AppSecureSessionStore(
+        secureStore: fallbackSecureStore,
+      );
+      final fallbackSessionService = SessionService(
+        identityService: fallbackIdentityService,
+        sessionStore: fallbackSessionStore,
+      );
+      final fallbackContactTrustStore = EncryptedContactTrustStore(
+        backend: MemoryEncryptedRecordBackend(),
+        keyProvider: fallbackKeyProvider.call,
+      );
+      final fallbackMessageStore = EncryptedMessageStore(
+        backend: MemoryEncryptedRecordBackend(),
+        keyProvider: fallbackKeyProvider.call,
+      );
+      final fallbackController = MessagingController(
+        identityService: fallbackIdentityService,
+        sessionService: fallbackSessionService,
+        sessionStore: fallbackSessionStore,
+        contactTrustService: ContactTrustService(
+          store: fallbackContactTrustStore,
+        ),
+        messageStore: fallbackMessageStore,
+        packetTransport: UnavailablePacketTransport('secure_storage_unavailable'),
+        sessionExchangeGateway: sessionExchangeGateway,
+      );
+      return MobileAppServices._(
+        controller: fallbackController,
+        relayConfigurationMessage:
+            'Local secure storage unavailable; relay and session exchange remain unavailable.',
+        messageStore: fallbackMessageStore,
+      );
+    }
   }
 
   static Future<(PacketTransport, String)> _buildTransport({
@@ -139,4 +228,17 @@ class MobileAppServices {
       );
     }
   }
+}
+
+class _InMemorySecureValueStore implements SecureValueStore {
+  final Map<String, String> _values = <String, String>{};
+
+  @override
+  Future<void> delete(String key) async => _values.remove(key);
+
+  @override
+  Future<String?> read(String key) async => _values[key];
+
+  @override
+  Future<void> write(String key, String value) async => _values[key] = value;
 }

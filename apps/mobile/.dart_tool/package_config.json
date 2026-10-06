@@ -62,8 +62,32 @@
       "languageVersion": "3.12"
     },
     {
+      "name": "echat_messaging",
+      "rootUri": "../../../packages/messaging",
+      "packageUri": "lib/",
+      "languageVersion": "3.12"
+    },
+    {
+      "name": "echat_protocol",
+      "rootUri": "../../../packages/protocol",
+      "packageUri": "lib/",
+      "languageVersion": "3.12"
+    },
+    {
       "name": "echat_secure_core",
       "rootUri": "../../../packages/secure_core",
+      "packageUri": "lib/",
+      "languageVersion": "3.12"
+    },
+    {
+      "name": "echat_storage",
+      "rootUri": "../../../packages/storage",
+      "packageUri": "lib/",
+      "languageVersion": "3.12"
+    },
+    {
+      "name": "echat_transport",
+      "rootUri": "../../../packages/transport",
       "packageUri": "lib/",
       "languageVersion": "3.12"
     },
@@ -156,6 +180,18 @@
       "rootUri": "file:///C:/Users/User/AppData/Local/Pub/Cache/hosted/pub.dev/hooks-2.0.2",
       "packageUri": "lib/",
       "languageVersion": "3.10"
+    },
+    {
+      "name": "http",
+      "rootUri": "file:///C:/Users/User/AppData/Local/Pub/Cache/hosted/pub.dev/http-1.6.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.4"
+    },
+    {
+      "name": "http_parser",
+      "rootUri": "file:///C:/Users/User/AppData/Local/Pub/Cache/hosted/pub.dev/http_parser-4.1.2",
+      "packageUri": "lib/",
+      "languageVersion": "3.4"
     },
     {
       "name": "jni",

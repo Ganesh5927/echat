@@ -12,6 +12,12 @@ class ConversationsScreen extends StatefulWidget {
   State<ConversationsScreen> createState() => _ConversationsScreenState();
 }
 
+String _conversationSubtitle(AppConversation conversation) {
+  final last = conversation.lastMessage;
+  if (last != null) return last.body;
+  return _sessionLabel(conversation.sessionStatus);
+}
+
 class _ConversationsScreenState extends State<ConversationsScreen> {
   late Future<List<AppConversation>> _conversations;
 
@@ -45,7 +51,9 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Submitted ${result.submittedToRelay}; received ${result.receivedLocally}.',
+              result.receivedLocally > 0 || result.submittedToRelay > 0
+                  ? 'Sync complete: ${result.submittedToRelay} submitted, ${result.receivedLocally} received.'
+                  : 'Sync idle: no new relay activity.',
             ),
           ),
         );
@@ -55,7 +63,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Sync is unavailable. Pending messages remain local.',
+              'Sync failed. Local pending messages remain encrypted and pending.',
             ),
           ),
         );
@@ -102,7 +110,14 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
             itemCount: conversations.length,
             itemBuilder: (context, index) {
               final conversation = conversations[index];
-              final last = conversation.lastMessage;
+              final statusBadge = switch (conversation.sessionStatus) {
+                AppSessionStatus.established => const Icon(Icons.lock_outline),
+                AppSessionStatus.requestPending => const Icon(Icons.pending_outlined),
+                AppSessionStatus.responsePendingDelivery => const Icon(Icons.sync_outlined),
+                AppSessionStatus.closed => const Icon(Icons.block_outlined),
+                AppSessionStatus.restoredNeedsReview => const Icon(Icons.warning_amber_rounded),
+                AppSessionStatus.notStarted => const Icon(Icons.person_outline),
+              };
               return ListTile(
                 key: Key('conversation-${conversation.sessionId}'),
                 leading: CircleAvatar(
@@ -110,16 +125,22 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                 ),
                 title: Text(conversation.displayAlias),
                 subtitle: Text(
-                  last?.body ?? _sessionLabel(conversation.sessionStatus),
+                  _conversationSubtitle(conversation),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                trailing: conversation.pendingMessageCount == 0
-                    ? Text(_sessionLabel(conversation.sessionStatus))
-                    : Badge(
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (conversation.pendingMessageCount > 0)
+                      Badge(
                         label: Text('${conversation.pendingMessageCount}'),
                         child: const Icon(Icons.schedule),
-                      ),
+                      )
+                    else
+                      statusBadge,
+                  ],
+                ),
                 onTap: () => _open(conversation),
               );
             },
@@ -146,8 +167,10 @@ class ConversationScreen extends StatefulWidget {
 
 class _ConversationScreenState extends State<ConversationScreen> {
   final TextEditingController _messageController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   late Future<List<AppMessage>> _messages;
   bool _busy = false;
+  bool _syncing = false;
   String? _statusMessage;
 
   bool get _canSend =>
@@ -174,8 +197,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   Future<void> _send() async {
-    final text = _messageController.text;
-    if (text.trim().isEmpty || !_canSend || _busy) return;
+    final text = _messageController.text.trim();
+    if (text.isEmpty || !_canSend || _busy) return;
     setState(() {
       _busy = true;
       _statusMessage = null;
@@ -194,24 +217,59 @@ class _ConversationScreenState extends State<ConversationScreen> {
           : 'Saved to encrypted outbox; pending connection.';
     } on Object {
       _statusMessage =
-          'Message was not queued. Check trust and session status.';
+          'Send failed. Trust and session state were not ready for a new message.';
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _retryMessage(String messageId) async {
+    setState(() {
+      _busy = true;
+      _statusMessage = null;
+    });
+    try {
+      await widget.controller.retryMessage(messageId);
+      await _refresh();
+      _statusMessage =
+          'Retry accepted. The message remains encrypted until the relay accepts it.';
+    } on Object {
+      _statusMessage = 'Retry failed. The message remains pending or blocked.';
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _synchronize() async {
-    setState(() => _busy = true);
+    setState(() {
+      _syncing = true;
+      _statusMessage = null;
+    });
     try {
       final result = await widget.controller.synchronize();
       await _refresh();
       _statusMessage =
-          'Submitted ${result.submittedToRelay}; received ${result.receivedLocally}; duplicates acknowledged ${result.duplicatesAcknowledged}.';
+          result.receivedLocally > 0 || result.submittedToRelay > 0
+              ? 'Sync complete: ${result.submittedToRelay} submitted, ${result.receivedLocally} received.'
+              : 'Sync idle: no new relay activity.';
     } on Object {
-      _statusMessage = 'Sync unavailable; queued messages remain pending.';
+      _statusMessage = 'Sync failed. Local pending messages remain encrypted and pending.';
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _syncing = false);
     }
+  }
+
+  void _scrollToBottom() {
+    if (!_scrollController.hasClients) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   @override
@@ -219,11 +277,22 @@ class _ConversationScreenState extends State<ConversationScreen> {
     appBar: AppBar(
       title: Text(widget.conversation.displayAlias),
       actions: [
-        IconButton(
-          key: const Key('sync-chat'),
-          tooltip: 'Synchronize',
-          onPressed: _busy ? null : _synchronize,
-          icon: const Icon(Icons.sync),
+        Semantics(
+          label: 'Synchronize messages',
+          button: true,
+          enabled: !(_busy || _syncing),
+          child: IconButton(
+            key: const Key('sync-chat'),
+            tooltip: 'Synchronize',
+            onPressed: _busy || _syncing ? null : _synchronize,
+            icon: _syncing
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.sync),
+          ),
         ),
       ],
     ),
@@ -258,12 +327,16 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   ),
                 );
               }
+              WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
               return ListView.builder(
                 key: const Key('message-list'),
+                controller: _scrollController,
                 padding: const EdgeInsets.all(12),
                 itemCount: messages.length,
-                itemBuilder: (context, index) =>
-                    _MessageBubble(message: messages[index]),
+                itemBuilder: (context, index) => _MessageBubble(
+                  message: messages[index],
+                  onRetry: () => _retryMessage(messages[index].id),
+                ),
               );
             },
           ),
@@ -280,24 +353,42 @@ class _ConversationScreenState extends State<ConversationScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    key: const Key('message-input'),
-                    controller: _messageController,
+                  child: Semantics(
+                    label: 'Message input',
                     enabled: _canSend && !_busy,
-                    minLines: 1,
-                    maxLines: 4,
-                    decoration: InputDecoration(
-                      hintText: _canSend ? 'Message' : 'Session not ready',
-                      border: const OutlineInputBorder(),
+                    child: TextField(
+                      key: const Key('message-input'),
+                      controller: _messageController,
+                      enabled: _canSend && !_busy,
+                      minLines: 1,
+                      maxLines: 5,
+                      maxLength: 2000,
+                      decoration: InputDecoration(
+                        hintText: _canSend ? 'Message' : 'Session not ready',
+                        border: const OutlineInputBorder(),
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                IconButton.filled(
-                  key: const Key('send-message'),
-                  tooltip: 'Send message',
-                  onPressed: _canSend && !_busy ? _send : null,
-                  icon: const Icon(Icons.send),
+                Semantics(
+                  label: 'Send message',
+                  button: true,
+                  enabled: _canSend && !_busy && _messageController.text.trim().isNotEmpty,
+                  child: IconButton.filled(
+                    key: const Key('send-message'),
+                    tooltip: 'Send message',
+                    onPressed: _canSend && !_busy && _messageController.text.trim().isNotEmpty
+                        ? _send
+                        : null,
+                    icon: _busy
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.send),
+                  ),
                 ),
               ],
             ),
@@ -330,9 +421,10 @@ class _SecurityBanner extends StatelessWidget {
 }
 
 class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message});
+  const _MessageBubble({required this.message, required this.onRetry});
 
   final AppMessage message;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -343,7 +435,11 @@ class _MessageBubble extends StatelessWidget {
       AppMessageStatus.pending => 'Pending in encrypted outbox',
       AppMessageStatus.submittedToRelay => 'Submitted to relay',
       AppMessageStatus.receivedLocally => 'Received on this device',
+      AppMessageStatus.failed => 'Failed; retry available',
     };
+    final tinted = message.isOutgoing
+        ? Theme.of(context).colorScheme.primaryContainer
+        : Theme.of(context).colorScheme.surfaceContainerHigh;
     return Align(
       alignment: alignment,
       child: ConstrainedBox(
@@ -353,7 +449,7 @@ class _MessageBubble extends StatelessWidget {
           margin: const EdgeInsets.symmetric(vertical: 5),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHigh,
+            color: tinted,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Column(
@@ -361,7 +457,23 @@ class _MessageBubble extends StatelessWidget {
             children: [
               SelectableText(message.body),
               const SizedBox(height: 6),
-              Text(status, style: Theme.of(context).textTheme.labelSmall),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Expanded(
+                    child: Text(
+                      status,
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                  ),
+                  if (message.isOutgoing && message.status == AppMessageStatus.failed)
+                    TextButton(
+                      key: Key('retry-message-${message.id}'),
+                      onPressed: onRetry,
+                      child: const Text('Retry'),
+                    ),
+                ],
+              ),
             ],
           ),
         ),

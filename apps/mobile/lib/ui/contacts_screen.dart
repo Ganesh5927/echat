@@ -74,9 +74,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   @override
@@ -94,8 +94,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
             maxLines: 5,
             decoration: const InputDecoration(
               labelText: 'Public identity payload',
-              hintText:
-                  'Paste a contact payload; QR scanning is not configured.',
+              hintText: 'Paste a contact payload; QR scanning is not configured.',
               border: OutlineInputBorder(),
             ),
           ),
@@ -119,7 +118,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
             future: _contacts,
             builder: (context, snapshot) {
               if (snapshot.hasError) {
-                return const ListTile(title: Text('Contacts unavailable'));
+                return const ListTile(
+                  title: Text('Contacts unavailable'),
+                );
               }
               if (!snapshot.hasData) {
                 return const Padding(
@@ -265,13 +266,9 @@ class _ContactDetailsScreenState extends State<ContactDetailsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text(
-            _contact.displayAlias,
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
+          Text(_contact.displayAlias, style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
           Text('Trust: ${_trustLabel(_contact.trustStatus)}'),
-          Text('Session: ${_sessionStatusLabel(_contact.sessionStatus)}'),
           const SizedBox(height: 16),
           if (changed && _contact.previousFingerprint != null) ...[
             const Text('Previously verified fingerprint'),
@@ -298,9 +295,7 @@ class _ContactDetailsScreenState extends State<ContactDetailsScreen> {
             FilledButton(
               key: const Key('confirm-contact-trust'),
               onPressed: _busy ? null : _verify,
-              child: Text(
-                changed ? 'Re-verify changed identity' : 'Verify contact',
-              ),
+              child: Text(changed ? 'Re-verify changed identity' : 'Verify contact'),
             ),
           ],
           if (verified) ...[
@@ -336,13 +331,4 @@ String _trustLabel(AppTrustStatus status) => switch (status) {
   AppTrustStatus.verified => 'Verified',
   AppTrustStatus.identityChanged => 'Identity changed',
   AppTrustStatus.revoked => 'Revoked',
-};
-
-String _sessionStatusLabel(AppSessionStatus status) => switch (status) {
-  AppSessionStatus.notStarted => 'Not started',
-  AppSessionStatus.requestPending => 'Request pending exchange',
-  AppSessionStatus.responsePendingDelivery => 'Response pending delivery',
-  AppSessionStatus.established => 'Established',
-  AppSessionStatus.closed => 'Closed',
-  AppSessionStatus.restoredNeedsReview => 'Restored; review required',
 };
