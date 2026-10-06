@@ -16,16 +16,26 @@
 - directional per-message HKDF-SHA256 keys and per-session replay state
 - no relay, UI, queue, persistent message database, or ratchet
 
-## Phase 4: independent protocol review and transport design
+## Phase 4: transport and untrusted relay foundation (implemented; tests pass)
 
-- obtain independent review of the session and message protocol composition
-- address review findings before transport integration
-- then define relay packet submission, acknowledgements, and bounded queue semantics
+- HTTPS packet transport and authenticated relay API
+- bounded in-memory queue, expiry, idempotent submission, and acknowledgement
+- relay stores and forwards opaque encrypted protocol bytes
+
+Independent review of the session/message composition remains a release gate.
+
+## Messaging Core: Phases 5-7 (implemented; focused tests pass)
+
+- 1-to-1 integration of the Phase 3 message protocol with Phase 4 transport
+- AES-GCM encrypted local message records behind an injected key-provider boundary
+- encrypted outbox, reconnect retry using stable message IDs, inbound deduplication, and relay acknowledgements
+- at-least-once delivery; exactly-once delivery is not claimed
 
 ## Later phases
 
-- Flutter chat UI and local encrypted message history
-- offline delivery, attachments, groups, calls, multi-device, and direct transport
+- platform secure-key adapter and durable session/identity state
+- Flutter chat UI and background synchronization
+- attachments, groups, calls, multi-device, push notifications, and direct transport
 
 ## Release gates
 
@@ -36,3 +46,5 @@ V0.1 is not complete until the protocol and security tests prove that:
 - replay and tampering are rejected
 - local storage remains encrypted
 - revocation state is enforced
+
+The current messaging tests do not satisfy the independent protocol review, platform-key integration, persistent session-state, or production deployment gates.

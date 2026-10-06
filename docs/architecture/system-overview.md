@@ -6,7 +6,7 @@ eChat is a privacy-first communication platform for secure person-to-person mess
 
 ## Current implementation status
 
-The repository contains the Phase 1 device identity foundation, Phase 2 authenticated session foundation, and Phase 3 local encrypted-text-message foundation. The relay, WebSocket delivery, chat UI, offline queue, message database, and ratchet are not implemented. The Phase 2/3 protocol composition is project-specific and unaudited; this repository does not claim production-ready secure messaging.
+The repository contains Phase 1-4 foundations and the Messaging Core: encrypted 1-to-1 message integration, a file-backed AES-GCM local message store, an encrypted outbox, reconnect retry, inbound deduplication, and relay acknowledgement. The relay queue remains in memory. Platform secure-key wiring, durable identity/session state, background sync, chat UI, and a ratchet are not implemented. The Phase 2/3 protocol composition is project-specific and unaudited; this repository does not claim production-ready secure messaging.
 
 ## Core trust model
 
@@ -67,7 +67,7 @@ The server does not have the right to learn the plaintext message, attachment co
 
 ### Local-first data ownership
 
-Each client stores local conversations in encrypted storage. To the extent possible, the server stores only temporary encrypted relay packets and supporting metadata for delivery.
+The messaging package stores local messages and outbox packets through an AES-GCM encrypted storage boundary. The host must provide a key from platform-secure storage; the current mobile app does not yet wire that provider or durable session storage. The relay stores only temporary encrypted relay packets and supporting metadata for delivery.
 
 ## Functional layers
 

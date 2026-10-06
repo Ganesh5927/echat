@@ -80,7 +80,11 @@ class MessageService {
     }
   }
 
-  Future<String> decryptIncomingMessage(String serializedPacket) async {
+  Future<String> decryptIncomingMessage(
+    String serializedPacket, {
+    Future<void> Function(String plaintext, TransportPacket packet)?
+    onAuthenticated,
+  }) async {
     final packet = TransportPacket.fromJson(serializedPacket);
     final envelope = packet.envelope;
     if (envelope.recipientDeviceId != _localDeviceId) {
@@ -109,7 +113,9 @@ class MessageService {
             aad: envelope.associatedDataBytes,
           );
           try {
-            return utf8.decode(cleartext);
+            final plaintext = utf8.decode(cleartext);
+            await onAuthenticated?.call(plaintext, packet);
+            return plaintext;
           } on FormatException {
             throw const MessageProtocolException(
               'Authenticated message text is malformed.',

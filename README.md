@@ -12,8 +12,9 @@ This repository is the foundational architecture and MVP plan for a secure 1-to-
 - Phase 2: secure session foundation (`84d91c1`).
 - Phase 3: local 1-to-1 text-message encryption and versioned protocol foundation.
 - Phase 4: HTTPS transport abstraction and untrusted in-memory relay foundation.
+- Messaging Core: 1-to-1 protocol integration, encrypted local message records, and offline outbox synchronization.
 
-Phase 4 does not add WebSocket delivery, chat UI, persistent queue/database, push notifications, or production deployment. Relay queue state is in memory and is lost on process restart. The cryptographic primitives are mature library implementations; the project-specific protocol composition has not been independently audited and is not production-approved.
+Messaging Core stores message records and queued packets in an AES-GCM encrypted local file backend and retries the same packet ID after reconnect. Relay queue state remains in memory and is lost on process restart. Platform secure-key integration for the message store, persistent identity/session storage, background sync, chat UI, push notifications, independent protocol review, and production deployment remain future work. The cryptographic primitives use mature library implementations; the project-specific protocol composition has not been independently audited and is not production-approved.
 
 ## Design priorities
 

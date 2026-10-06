@@ -40,8 +40,9 @@ Flutter UI
 - create and protect local device identity
 - manage contacts and verification state
 - send and receive encrypted packets
-- serialize message state
-- maintain local outbox for offline delivery
+- serialize and store message state through encrypted local storage
+- maintain and retry a durable local outbox after reconnect
+- deduplicate inbound relay retries and acknowledge after authenticated local persistence
 - report security status to the UI
 
 ### Protocol engine
@@ -53,7 +54,7 @@ Flutter UI
 - decryption verification
 - key rotation and device revocation steps
 
-The current protocol package exposes high-level `sendEncryptedMessage` and `decryptIncomingMessage` operations. Widgets do not access cipher or key primitives. This local foundation has no UI or transport integration, and its protocol composition has not been independently audited.
+The protocol package exposes high-level `sendEncryptedMessage` and `decryptIncomingMessage` operations. The UI-independent `echat_messaging` package composes those operations with `PacketTransport` and `EncryptedMessageStore`; widgets do not access cipher or key primitives. The receiver persists authenticated plaintext before the protocol commits replay state, then acknowledges the relay packet. The protocol composition has not been independently audited.
 
 ### Secure crypto adapter
 
@@ -71,7 +72,7 @@ The client stores:
 - attachment references
 - offline queue items
 
-All critical local data is stored under encrypted persistence and accessed through platform secure storage.
+Message records and outbox entries are encrypted per record with AES-256-GCM before the file backend writes them. The encryption key is supplied through an injected provider. A platform secure-storage provider and durable identity/session adapters are not yet wired, so the current app does not yet meet the complete local-first persistence design.
 
 ## Security status model
 

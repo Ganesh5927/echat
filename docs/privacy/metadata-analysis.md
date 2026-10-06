@@ -37,7 +37,9 @@ Even when the server cannot decrypt content, the following patterns can still be
 
 This is a real limitation of the design and must be openly documented.
 
-In the current local Phase 3 packet, device and session references, message type and ID, sequence, key epoch, nonce, ciphertext length, authentication tag, and optional transport hints are visible. No relay currently receives these packets. The message body is encrypted locally, but this testable package behavior is not a deployment or anonymity claim.
+The messaging core now sends the serialized Phase 3 packet through the Phase 4 relay. The relay does not parse the envelope in its implementation, but its stored opaque bytes contain visible device and session references, message type and ID, sequence, key epoch, nonce, ciphertext length, authentication tag, and optional transport hints. The relay wrapper also exposes sender/recipient route IDs, packet ID, expiry, packet size, and queue/delivery timing. Message plaintext, identity private keys, and session secrets are not included in the submitted packet.
+
+The local file store encrypts message records, but filesystem activity, record count, and ciphertext sizes remain observable. These package-level tests are not a deployment or anonymity claim.
 
 ## Privacy goals
 

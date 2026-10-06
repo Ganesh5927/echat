@@ -1,0 +1,14 @@
+name: echat_storage
+description: Encrypted local message storage for eChat.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  crypto: ^3.0.7
+  cryptography: ^2.7.1
+
+dev_dependencies:
+  test: ^1.25.0

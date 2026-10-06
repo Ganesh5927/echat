@@ -1,11 +1,13 @@
 # Local storage security
 
-## Implementation in Phase 1
+## Current implementation
 
-The application stores the private key in platform-secure storage and keeps public metadata separate from the cryptographic identity. The implementation is intentionally minimal and follows the design boundary: sensitive identity material is never stored in `SharedPreferences` or plaintext files.
+`packages/storage` provides `EncryptedMessageStore`, which encrypts each complete message record with AES-256-GCM before writing it through a backend. `FileEncryptedRecordBackend` stores only the encoded nonce, ciphertext, and authentication tag in files; the filename is derived from a hash of the message ID. The exact serialized E2E packet and local plaintext are both inside the encrypted record.
+
+The encryption key is supplied by `LocalStorageKeyProvider`. The storage package does not create or persist the key, and the Flutter app does not yet connect this provider to platform secure storage. The existing identity and session test stores are in-memory implementations; durable identity/session storage is not part of this milestone.
 
 ```text
-Encrypted Local Database
+Planned local encrypted database
   ├─ conversations
   ├─ contacts
   ├─ message records
@@ -13,7 +15,7 @@ Encrypted Local Database
   ├─ device records
   └─ outbox / pending messages
 
-Platform Secure Key Storage
+Required platform secure key storage (provider wiring pending)
   ├─ identity private keys
   ├─ key wrapping metadata
   └─ local encryption keys
@@ -21,16 +23,9 @@ Platform Secure Key Storage
 
 ## Storage protections
 
-The actual implementation uses:
+The implemented message store uses independent random-nonce AES-256-GCM encryption for records and fails closed when a record cannot be decrypted. A local encryption key is never written by the message store. The host application must provide a stable key from secure OS storage before using the file backend for real user data; an in-memory or hardcoded production key is not acceptable.
 
-- `flutter_secure_storage` for private key storage
-- `SharedPreferences` for public identity/session metadata and UI state, not private key material
-- strict separation between cryptographic identity and application preferences
-- `FlutterSecureStorage` for session roots and pending ephemeral session private keys
-- `SharedPreferences` for public session records and replay counters
-- callback-scoped message keys in memory only; they are not persisted
-
-The private key is never logged, never committed to source control, and never sent to the relay or backend.
+The relay receives only the Phase 3 serialized encrypted packet, not the local plaintext, local storage key, identity private key, or session secret. Message IDs, routing identifiers, packet size, and timing remain observable metadata.
 
 Phase 3 envelopes contain ciphertext and an authentication tag, not the session root. Plaintext exists briefly for UTF-8 conversion and AEAD, then the owned byte buffer is cleared. Returned Dart strings cannot be reliably zeroized.
 
@@ -40,7 +35,7 @@ Phase 3 envelopes contain ciphertext and an authentication tag, not the session 
 - decryption keys are not exposed to app code in plaintext except in memory under controlled use
 - metadata is minimized and not treated as trusted evidence of message truth
 
-## Data classes
+## Intended data classes
 
 The client stores:
 
@@ -52,7 +47,7 @@ The client stores:
 
 ## Secret handling
 
-The app must not keep private cryptographic keys in:
+The app must not keep private cryptographic keys or the message-store encryption key in:
 
 - SharedPreferences
 - plain JSON files
@@ -62,8 +57,8 @@ The app must not keep private cryptographic keys in:
 
 ## Deletion and retention
 
-Deletion should be implemented using secure erase measures where the platform supports them. The design must not claim secure deletion in all cases; it should be documented as technical best effort rather than a guarantee.
+The file backend supports logical record deletion but does not guarantee secure erase. Backups, filesystem journals, snapshots, and storage wear-leveling may retain prior bytes. The current local message records also have no automated expiration/retention cleanup.
 
 ## Threat model
 
-This local design mitigates the risk of a stolen or extracted device state, but it cannot prevent a fully compromised device from reading the plaintext presented to the user or from extracting keys from memory while the device is running.
+This local design mitigates offline file disclosure only when the host supplies a well-protected key. It cannot prevent a fully compromised device from reading plaintext presented to the user or extracting keys from memory while the device is running. Plaintext Dart strings cannot be reliably zeroized.

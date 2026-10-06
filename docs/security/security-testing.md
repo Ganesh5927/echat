@@ -65,7 +65,11 @@ No release should proceed without passing:
 
 ## Phase 3 local tests
 
-The Phase 3 protocol package tests exercise two local devices and cover AES-GCM round trips, ciphertext/tag/header tampering, recipient/session binding, message-key separation, nonce uniqueness, replay, retries, concurrent sends/receives, malformed and noncanonical packets, and secret/plaintext exclusion. These tests do not exercise a relay, persistent database, actual device secure storage, cross-process concurrency, or independent protocol review; they are not release approval.
+The Phase 3 protocol package tests exercise two local devices and cover AES-GCM round trips, ciphertext/tag/header tampering, recipient/session binding, message-key separation, nonce uniqueness, replay, retries, concurrent sends/receives, malformed and noncanonical packets, and secret/plaintext exclusion. These tests do not provide independent protocol review and are not release approval.
+
+## Messaging Core tests
+
+Messaging Core tests cover encrypted file-store round trips and wrong-key rejection; offline queueing and reconnect with the same message ID and serialized ciphertext; incoming duplicate delivery after a lost acknowledgement; tampering without local persistence or relay acknowledgement; and an in-process HTTPS/relay end-to-end flow that checks the submitted body contains no message plaintext or key fields. They do not validate platform key-provider integration, durable session state across process restart, deployed TLS, cross-process storage locking, background sync, or production relay persistence.
 
 ## Documentation requirement
 

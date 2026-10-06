@@ -465,6 +465,27 @@ void main() {
       );
     });
 
+    test(
+      'failed authenticated persistence does not consume a valid retry',
+      () async {
+        final harness = await _Harness.create();
+        final packet = await harness.send('retry after storage failure');
+        final serialized = packet.toCanonicalJson();
+
+        await expectLater(
+          harness.bMessages.decryptIncomingMessage(
+            serialized,
+            onAuthenticated: (_, _) async => throw StateError('storage failed'),
+          ),
+          throwsA(isA<MessageProtocolException>()),
+        );
+        expect(
+          await harness.bMessages.decryptIncomingMessage(serialized),
+          'retry after storage failure',
+        );
+      },
+    );
+
     test('retry resends the identical serialized packet and ID', () async {
       final harness = await _Harness.create();
       final packet = await harness.send('retry me');
