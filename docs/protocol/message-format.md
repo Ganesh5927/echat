@@ -28,7 +28,7 @@ The envelope contains exactly these fields, serialized in this order:
 
 No timestamp is used for replay protection. The envelope contains no identity private key, session root key, message key, password, recovery secret, or plaintext body.
 
-`transportMetadata` is a separate, strictly parsed object with nullable `routeHint`, `queueId`, and `ackId` strings, each limited to 256 characters. It is not encrypted or authenticated by this protocol and must not influence message acceptance. The current implementation provides no relay or delivery behavior.
+`transportMetadata` is a separate, strictly parsed object with nullable `routeHint`, `queueId`, and `ackId` strings, each limited to 256 characters. It is not encrypted or authenticated by this protocol and must not influence message acceptance. Phase 4 carries the canonical Phase 3 packet as opaque bytes inside a separate relay wrapper; see `relay-transport.md`.
 
 ## Encryption And AAD
 
@@ -73,5 +73,5 @@ The lock coordinates service instances in the same Dart isolate only. Cross-isol
 - This does not implement a Double Ratchet, post-compromise security, or per-message forward secrecy.
 - The transport sees device/session references, type, message ID, sequence, nonce, ciphertext length, tag, and optional transport metadata. It does not see message text.
 - Transport metadata is intentionally unauthenticated and must not carry trust decisions.
-- There is no relay, queue, persistent message database, UI, attachment, group, or multi-device support in this phase.
+- The Phase 4 relay is an unaudited local foundation with an in-memory queue, no persistent message database, UI, attachment, group, or multi-device support.
 - This foundation is not production-approved and is not evidence of a complete secure messaging system.

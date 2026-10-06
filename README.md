@@ -11,8 +11,9 @@ This repository is the foundational architecture and MVP plan for a secure 1-to-
 - Phase 1: device identity foundation (`e9df1c1`).
 - Phase 2: secure session foundation (`84d91c1`).
 - Phase 3: local 1-to-1 text-message encryption and versioned protocol foundation.
+- Phase 4: HTTPS transport abstraction and untrusted in-memory relay foundation.
 
-Phase 3 does not add a relay, WebSocket transport, chat UI, offline queue, message database, ratchet, or production messaging workflow. The cryptographic primitives are mature library implementations; the project-specific protocol composition has not been independently audited and is not production-approved.
+Phase 4 does not add WebSocket delivery, chat UI, persistent queue/database, push notifications, or production deployment. Relay queue state is in memory and is lost on process restart. The cryptographic primitives are mature library implementations; the project-specific protocol composition has not been independently audited and is not production-approved.
 
 ## Design priorities
 
