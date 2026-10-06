@@ -1,0 +1,35 @@
+{
+  "roots": [
+    "echat_secure_core"
+  ],
+  "packages": [
+    {
+      "name": "echat_secure_core",
+      "version": "0.1.0",
+      "dependencies": [
+        "crypto"
+      ],
+      "devDependencies": []
+    },
+    {
+      "name": "crypto",
+      "version": "3.0.7",
+      "dependencies": [
+        "typed_data"
+      ]
+    },
+    {
+      "name": "typed_data",
+      "version": "1.4.0",
+      "dependencies": [
+        "collection"
+      ]
+    },
+    {
+      "name": "collection",
+      "version": "1.19.1",
+      "dependencies": []
+    }
+  ],
+  "configVersion": 1
+}

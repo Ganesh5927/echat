@@ -1,0 +1,12 @@
+name: echat_secure_core
+description: Shared cryptographic utility types for the eChat project.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  crypto: ^3.0.7
+
+# This package intentionally keeps the cryptographic boundary small and explicit.

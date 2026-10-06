@@ -1,0 +1,36 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Build outputs
+/build/
+/dist/
+/coverage/
+/.dart_tool/
+/.flutter-plugins
+/.flutter-plugins-dependencies
+/.packages
+/.pub-cache/
+/.pub/
+
+# Node / web
+node_modules/
+
+# Rust
+/target/
+
+# Logs
+*.log
+
+# Local data
+*.sqlite
+*.db
+*.pem
+*.key

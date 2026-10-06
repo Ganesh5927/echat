@@ -1,0 +1,17 @@
+name: echat_identity
+description: Device identity subsystem for the eChat privacy-first messaging platform.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  cryptography: ^2.7.1
+  crypto: ^3.0.7
+  echat_secure_core:
+    path: ../secure_core
+  uuid: ^4.5.1
+
+dev_dependencies:
+  test: ^1.25.0
