@@ -11,6 +11,9 @@ The Phase 1 implementation enforces the requirement that private cryptographic m
 - Restart: `IdentityService.loadIdentity()` reads the private key from secure storage and validates the public identity fingerprint.
 - Delete: `IdentityService.deleteIdentity()` removes the secure-key value and public metadata.
 - Rotation: `IdentityService.rotateIdentity()` creates a new identity and replaces the current public identity record.
+- Session setup: `SessionService` derives a 32-byte session root from ephemeral X25519 with HKDF-SHA256 and stores it only in `SecureSessionStore` secret material.
+- Message use: the session service derives a directional 32-byte per-message key with HKDF-SHA256, lends it to one protocol callback, then destroys its owned key buffer.
+- Message encryption: `MessageService` uses AES-256-GCM and clears owned plaintext byte buffers after use. The envelope contains no secret key material.
 
 ## Key classes
 
@@ -25,6 +28,8 @@ The Phase 1 implementation enforces the requirement that private cryptographic m
 ## Key storage
 
 Private keys are stored in platform secure storage, not in plaintext files or ordinary app-local storage.
+
+The mobile session adapter stores the session root and pending ephemeral private material in `FlutterSecureStorage`. Public session metadata and replay counters are in `SharedPreferences`. Message keys are not persisted. This storage split and the unit tests do not constitute an audit or production approval of the custom protocol composition.
 
 The client should use:
 
@@ -68,6 +73,9 @@ Recovery cannot be implemented by silently weakening cryptographic identity. Any
 
 - never hardcode keys
 - never log private keys
+- never place session roots or message keys in transport envelopes
+- derive message keys with distinct direction, session, message ID, sequence, and epoch context
+- destroy callback-scoped message keys after each operation
 - never store plaintext keys in source control or ordinary local storage
 - never claim a secure system without actual key lifecycle enforcement
 - fail closed on authentication or key validation failure

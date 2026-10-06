@@ -2,7 +2,7 @@
 
 ## Purpose
 
-A session foundation establishes shared key material between two previously verified device identities. This phase does not encrypt chat messages or implement a ratchet.
+The Phase 2 session foundation establishes shared key material between two previously verified device identities. Phase 3 derives one-use message keys from this root and encrypts text envelopes; no ratchet is implemented.
 
 ## Session model
 
@@ -38,7 +38,7 @@ HKDF-SHA256 derives a 256-bit session key with a context containing the session 
 
 Ephemeral DH contributes per-session forward secrecy, subject to secure deletion and device storage assumptions. This phase does not provide per-message forward secrecy.
 
-Message encryption, authenticated message records, and ratcheting are explicitly deferred. They must use a vetted protocol/library rather than a custom ratchet.
+Per-message encryption and authenticated envelopes are implemented in the Phase 3 protocol package and documented in `message-format.md`. Ratcheting remains deferred and must use a vetted protocol/library rather than a custom ratchet.
 
 ## Key evolution and ratcheting
 
@@ -92,4 +92,4 @@ Offline recovery is not implemented. A future client must:
 
 ## Security assumptions
 
-The cryptographic operations are provided by the mature `cryptography` package. The message exchange composition remains unaudited. Before production use, it requires independent protocol review, secure-store integration on every supported platform, and a vetted messaging ratchet. The current session foundation must not be used to claim end-to-end encrypted messaging.
+The cryptographic operations are provided by the mature `cryptography` package. The handshake and message exchange composition remain unaudited. Before production use, they require independent protocol review, secure-store integration on every supported platform, and a vetted messaging ratchet. This foundation is not production-approved secure messaging.

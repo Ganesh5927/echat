@@ -1,171 +1,70 @@
-# Message flow and sequence diagrams
+# Message flow
 
-## High-level flow
+## Implemented local message lifecycle
 
 ```text
-Person A
-  ↓ compose plaintext
-  ↓ local encryption
-  ↓ authenticated encrypted message
-  ↓ ciphertext packet
-  ↓ relay
-  ↓ ciphertext packet
-  ↓ Person B device
-  ↓ verification
-  ↓ decryption
-  ↓ plaintext displayed locally
+Device A
+  -> MessageService.sendEncryptedMessage
+  -> SessionService reserves sequence and lends a one-use message key
+  -> AES-256-GCM encrypts UTF-8 plaintext with canonical header AAD
+  -> versioned envelope and separate transport metadata
+  -> caller may serialize and transport packet (transport is not implemented)
+  -> Device B parses and validates canonical envelope
+  -> session validates peer direction and replay state
+  -> AES-256-GCM authenticates and decrypts
+  -> replay state commits only after authentication succeeds
+  -> plaintext is returned locally
 ```
 
-## Sequence diagram: first contact
+The packages implement the local message-service stages only. No relay, chat UI, acknowledgement, or delivery queue exists.
+
+## Existing identity and session foundation
 
 ```mermaid
 sequenceDiagram
     participant A as Device A
     participant B as Device B
-    participant R as Relay
 
-    A->>B: Public identity QR / verification bundle
-    B->>A: Public identity QR / verification bundle
-    A->>A: Verify fingerprint
-    B->>B: Verify fingerprint
-    A->>R: Contact request / encrypted identity handshake
-    R-->>B: Relay encrypted packet
-    A->>B: Establish authenticated session
-    B-->>A: Session confirmation
+    A->>B: session-init signed with Ed25519 identity
+    B->>B: Verify expected pinned identity key
+    B->>A: session-accept signed with Ed25519 identity
+    A->>A: Verify response and matching session-key fingerprint
 ```
 
-## Sequence diagram: session establishment
+## Local message exchange
 
 ```mermaid
 sequenceDiagram
     participant A as Device A
     participant B as Device B
-    participant R as Relay
+    participant C as Caller / future transport
 
-    A->>B: Hello / identity binding / ephemeral data
-    B->>A: Identity verification / ephemeral response
-    A->>A: Derive session key material
-    B->>B: Derive session key material
-    A->>R: Encrypted session setup packet
-    R-->>B: Forward ciphertext
-    B->>B: Validate authentication and transcript
-    B-->>A: Session established
+    A->>A: Reserve sequence, derive one-use key, encrypt and authenticate
+    A-->>C: Return versioned TransportPacket
+    C->>B: Supply serialized packet (transport is not implemented)
+    B->>B: Parse, validate session/replay, authenticate and decrypt
+    B-->>C: Return plaintext only after validation succeeds
 ```
 
-## Sequence diagram: normal message
+## Replay and retry behavior
 
 ```mermaid
 sequenceDiagram
     participant A as Device A
     participant B as Device B
-    participant R as Relay
 
-    A->>A: Compose plaintext
-    A->>A: Encrypt and authenticate
-    A->>R: Send ciphertext packet
-    R-->>B: Forward ciphertext packet
-    B->>B: Verify authenticity and session state
-    B->>B: Decrypt locally
-    B-->>A: Ack / delivery status
+    A->>B: Original serialized packet
+    B->>B: Authenticate, decrypt and commit message ID / sequence
+    A->>B: Same serialized packet retried
+    B->>B: Reject committed ID or stale sequence
 ```
 
-## Sequence diagram: offline recipient
+The receiver holds a session lock across replay validation, key derivation, AEAD authentication/decryption, and replay-state commit. Failed authentication does not consume the message ID or sequence. Sequences must increase; gaps are permitted and out-of-order delivery is not. A retry resends the exact packet. Re-encrypting creates a new message ID, sequence, key, and nonce.
 
-```mermaid
-sequenceDiagram
-    participant A as Device A
-    participant B as Device B
-    participant R as Relay
+## Tampering behavior
 
-    A->>A: Encrypt message to outbox
-    A->>R: Submit ciphertext packet
-    R->>R: Queue packet
-    B-->>R: Offline / unavailable
-    R-->>A: Queue accepted
-    B->>R: Reconnect
-    R-->>B: Deliver queued ciphertext
-    B->>B: Verify and decrypt
-```
+The receiver rejects malformed, unknown-version, noncanonical, wrong-recipient, tampered, duplicate, and stale packets. An authentication failure returns a fixed protocol error and no plaintext. These are local package behaviors, not a tested relay-to-client deployment flow.
 
-## Sequence diagram: reconnect
+## Deferred capabilities
 
-```mermaid
-sequenceDiagram
-    participant A as Device A
-    participant B as Device B
-    participant R as Relay
-
-    B->>R: Reconnect / resume session
-    A->>R: Send queued or new packets
-    R-->>B: Deliver pending packets
-    B->>B: Validate sequence and dedupe
-    B-->>A: Ack and resume state
-```
-
-## Sequence diagram: key change
-
-```mermaid
-sequenceDiagram
-    participant A as Device A
-    participant B as Device B
-    participant R as Relay
-
-    A->>A: Detect key rotation or identity update
-    A->>R: Encrypted key-change notification
-    R-->>B: Forward notification
-    B->>B: Validate new identity and sequence state
-    B-->>A: Accept or reject new key state
-```
-
-## Sequence diagram: device revocation
-
-```mermaid
-sequenceDiagram
-    participant A as Device A
-    participant B as Device B
-    participant R as Relay
-
-    A->>R: Revoke device or report compromise
-    R-->>B: Revocation notice
-    B->>B: Mark device invalid
-    B-->>A: Security warning / session invalidated
-```
-
-## Sequence diagram: replayed message
-
-```mermaid
-sequenceDiagram
-    participant A as Device A
-    participant B as Device B
-    participant R as Relay
-
-    A->>R: Message 002
-    R-->>B: Deliver message 002
-    B->>B: Accept
-    A->>R: Message 002 duplicate
-    R-->>B: Deliver duplicate
-    B->>B: Detect duplicate via message ID / sequence state
-    B-->>R: Reject as replay
-```
-
-## Sequence diagram: invalid message
-
-```mermaid
-sequenceDiagram
-    participant A as Device A
-    participant B as Device B
-    participant R as Relay
-
-    A->>R: Send tampered or invalid ciphertext
-    R-->>B: Forward packet
-    B->>B: Authentication tag fails
-    B->>B: Reject message
-    B-->>A: Security error / invalid message
-```
-
-## Message handling rules
-
-- The receiver must validate message authentication before decryption.
-- The receiver must reject duplicates and old replays.
-- The receiver must not display plaintext for unauthenticated or invalid payloads.
-- Out-of-order handling must be explicit and safe.
+Relay routing, acknowledgements, offline queues, reconnect recovery, key-change delivery, revocation delivery, attachments, groups, and multi-device handling are not implemented. The message/session protocol composition is project-specific and has not been independently audited.

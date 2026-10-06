@@ -37,6 +37,8 @@ Even when the server cannot decrypt content, the following patterns can still be
 
 This is a real limitation of the design and must be openly documented.
 
+In the current local Phase 3 packet, device and session references, message type and ID, sequence, key epoch, nonce, ciphertext length, authentication tag, and optional transport hints are visible. No relay currently receives these packets. The message body is encrypted locally, but this testable package behavior is not a deployment or anonymity claim.
+
 ## Privacy goals
 
 The system should minimize metadata by:

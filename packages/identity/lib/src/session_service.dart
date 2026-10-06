@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:cryptography/cryptography.dart';
@@ -270,6 +271,25 @@ class SessionEstablishmentResult {
   final SessionProtocolMessage response;
 }
 
+class SessionSendContext {
+  const SessionSendContext({
+    required this.sequence,
+    required this.senderDeviceId,
+    required this.recipientDeviceId,
+  });
+
+  final int sequence;
+  final String senderDeviceId;
+  final String recipientDeviceId;
+}
+
+class _DerivedSessionKey {
+  const _DerivedSessionKey({required this.keyHex, required this.fingerprint});
+
+  final String keyHex;
+  final String fingerprint;
+}
+
 abstract class SecureSessionStore {
   Future<void> saveSessionRecord(String sessionId, SessionRecord record);
   Future<SessionRecord?> loadSessionRecord(String sessionId);
@@ -325,6 +345,8 @@ class MemorySecureSessionStore implements SecureSessionStore {
 }
 
 class SessionService {
+  static final Map<String, Future<void>> _sessionLocks = {};
+
   SessionService({
     required IdentityService identityService,
     required SecureSessionStore sessionStore,
@@ -333,7 +355,6 @@ class SessionService {
 
   final IdentityService _identityService;
   final SecureSessionStore _sessionStore;
-  final Map<String, Future<void>> _sessionLocks = {};
 
   Future<SessionProtocolMessage> createSession({
     required String remoteDeviceId,
@@ -534,7 +555,7 @@ class SessionService {
     );
     localEphemeralKeyPair.destroy();
 
-    final sessionKeyFingerprint = _fingerprintBytes(sessionKey);
+    final sessionKeyFingerprint = sessionKey.fingerprint;
     final sessionRecord = SessionRecord(
       sessionId: message.sessionId,
       localDeviceId: localDeviceId,
@@ -590,7 +611,7 @@ class SessionService {
 
     final secretBundle = SessionSecretBundle(
       sessionId: message.sessionId,
-      sessionKeyHex: _hex(sessionKey),
+      sessionKeyHex: sessionKey.keyHex,
       localEphemeralPrivateKeyBase64: '',
       remoteEphemeralPublicKeyBase64: message.ephemeralPublicKeyBase64,
       localIdentityPublicKeyPem: localIdentity.publicKeyPem,
@@ -698,7 +719,7 @@ class SessionService {
       localIdentityPem: currentSession.localIdentityPublicKeyPem,
       remoteIdentityPem: currentSession.remoteIdentityPublicKeyPem,
     );
-    final derivedFingerprint = _fingerprintBytes(sessionKey);
+    final derivedFingerprint = sessionKey.fingerprint;
 
     final payloadMap = jsonDecode(message.payload) as Map<String, dynamic>;
     final expectedFingerprint =
@@ -719,7 +740,7 @@ class SessionService {
 
     final updatedSecret = SessionSecretBundle(
       sessionId: sessionSecret.sessionId,
-      sessionKeyHex: _hex(sessionKey),
+      sessionKeyHex: sessionKey.keyHex,
       localEphemeralPrivateKeyBase64: '',
       remoteEphemeralPublicKeyBase64: message.ephemeralPublicKeyBase64,
       localIdentityPublicKeyPem: sessionSecret.localIdentityPublicKeyPem,
@@ -737,6 +758,129 @@ class SessionService {
     return updatedSession;
   }
 
+  Future<T> withNextSendMessageKey<T>({
+    required String sessionId,
+    required String messageId,
+    int keyEpoch = 0,
+    required Future<T> Function(SecretKey key, SessionSendContext context)
+    encryptAndBuild,
+  }) {
+    return _withSessionLock(sessionId, () async {
+      if (messageId.isEmpty || keyEpoch != 0) {
+        throw const SessionValidationException(
+          'Message ID or key epoch is invalid.',
+        );
+      }
+      final record = await getSession(sessionId);
+      if (record == null || !record.isEstablished) {
+        throw const SessionValidationException('Session is not established.');
+      }
+      final secret = await _sessionStore.loadSessionSecret(sessionId);
+      if (secret == null) {
+        throw const SessionValidationException(
+          'Session key material is missing.',
+        );
+      }
+      final sequence = record.sendSequence + 1;
+      final key = await _deriveMessageKey(
+        secret,
+        sessionId: sessionId,
+        senderDeviceId: record.localDeviceId,
+        recipientDeviceId: record.remoteDeviceId,
+        messageId: messageId,
+        sequence: sequence,
+        keyEpoch: keyEpoch,
+      );
+      try {
+        await _sessionStore.saveSessionRecord(
+          sessionId,
+          record.copyWith(
+            sendSequence: sequence,
+            updatedAt: DateTime.now().toUtc(),
+          ),
+        );
+      } on Object {
+        key.destroy();
+        rethrow;
+      }
+      try {
+        return await encryptAndBuild(
+          key,
+          SessionSendContext(
+            sequence: sequence,
+            senderDeviceId: record.localDeviceId,
+            recipientDeviceId: record.remoteDeviceId,
+          ),
+        );
+      } finally {
+        key.destroy();
+      }
+    });
+  }
+
+  Future<T> processReceivedMessage<T>({
+    required String sessionId,
+    required String senderDeviceId,
+    required String recipientDeviceId,
+    required String messageId,
+    required int sequence,
+    int keyEpoch = 0,
+    required Future<T> Function(SecretKey messageKey) authenticateAndDecrypt,
+  }) {
+    return _withSessionLock(sessionId, () async {
+      if (messageId.isEmpty || sequence < 1 || keyEpoch != 0) {
+        throw const SessionValidationException(
+          'Message key context is invalid.',
+        );
+      }
+      final record = await getSession(sessionId);
+      if (record == null || !record.isEstablished) {
+        throw const SessionValidationException('Session is not established.');
+      }
+      if (senderDeviceId != record.remoteDeviceId ||
+          recipientDeviceId != record.localDeviceId) {
+        throw const SessionValidationException(
+          'Message direction does not match the session peers.',
+        );
+      }
+      if (sequence <= record.receiveSequence ||
+          record.seenMessageIds.contains(messageId)) {
+        throw const SessionReplayException(
+          'Duplicate or stale message rejected.',
+        );
+      }
+      final secret = await _sessionStore.loadSessionSecret(sessionId);
+      if (secret == null) {
+        throw const SessionValidationException(
+          'Session key material is missing.',
+        );
+      }
+      final key = await _deriveMessageKey(
+        secret,
+        sessionId: sessionId,
+        senderDeviceId: senderDeviceId,
+        recipientDeviceId: recipientDeviceId,
+        messageId: messageId,
+        sequence: sequence,
+        keyEpoch: keyEpoch,
+      );
+      try {
+        final result = await authenticateAndDecrypt(key);
+        await _sessionStore.saveSessionRecord(
+          sessionId,
+          record.copyWith(
+            receiveSequence: sequence,
+            updatedAt: DateTime.now().toUtc(),
+            seenMessageIds: record.seenMessageIds.union(<String>{messageId}),
+          ),
+        );
+        return result;
+      } finally {
+        key.destroy();
+      }
+    });
+  }
+
   Future<SessionRecord?> getSession(String sessionId) async {
     final record = await _sessionStore.loadSessionRecord(sessionId);
     return record;
@@ -747,24 +891,43 @@ class SessionService {
   }
 
   Future<void> closeSession(String sessionId) async {
-    final current = await getSession(sessionId);
-    if (current == null) {
-      return;
-    }
-    final closed = current.copyWith(
-      sessionStatus: SessionState.closed,
-      updatedAt: DateTime.now().toUtc(),
-      closedReason: 'local session closure',
-    );
-    await _sessionStore.saveSessionRecord(sessionId, closed);
-    await _sessionStore.deleteSessionSecret(sessionId);
+    await _withSessionLock(sessionId, () async {
+      final current = await getSession(sessionId);
+      if (current == null) {
+        return;
+      }
+      final closed = current.copyWith(
+        sessionStatus: SessionState.closed,
+        updatedAt: DateTime.now().toUtc(),
+        closedReason: 'local session closure',
+      );
+      await _sessionStore.saveSessionRecord(sessionId, closed);
+      await _sessionStore.deleteSessionSecret(sessionId);
+    });
   }
 
   Future<void> removeSession(String sessionId) async {
-    await _sessionStore.deleteSession(sessionId);
+    await _withSessionLock(sessionId, () async {
+      await _sessionStore.deleteSession(sessionId);
+    });
   }
 
   Future<void> registerReceivedPacket({
+    required String sessionId,
+    required int sequence,
+    required String messageId,
+  }) {
+    return _withSessionLock(
+      sessionId,
+      () => _registerReceivedPacket(
+        sessionId: sessionId,
+        sequence: sequence,
+        messageId: messageId,
+      ),
+    );
+  }
+
+  Future<void> _registerReceivedPacket({
     required String sessionId,
     required int sequence,
     required String messageId,
@@ -848,7 +1011,7 @@ class SessionService {
     }
   }
 
-  Future<List<int>> _deriveSessionKey({
+  Future<_DerivedSessionKey> _deriveSessionKey({
     required SecretKey sharedSecret,
     required String sessionId,
     required String localDeviceId,
@@ -856,22 +1019,91 @@ class SessionService {
     required String localIdentityPem,
     required String remoteIdentityPem,
   }) async {
-    final keyMaterial = await sharedSecret.extractBytes();
-    final hkdf = Hkdf(hmac: Hmac.sha256(), outputLength: 32);
-    final derived = await hkdf.deriveKey(
-      secretKey: SecretKey(keyMaterial),
-      nonce: utf8.encode(
-        _sessionContext(
-          sessionId: sessionId,
-          localDeviceId: localDeviceId,
-          remoteDeviceId: remoteDeviceId,
-          localIdentityPem: localIdentityPem,
-          remoteIdentityPem: remoteIdentityPem,
-        ),
-      ),
-      info: utf8.encode('echat.session.v2'),
+    final keyMaterial = Uint8List.fromList(await sharedSecret.extractBytes());
+    final keyMaterialKey = SecretKeyData(
+      keyMaterial,
+      overwriteWhenDestroyed: true,
     );
-    return (await derived.extractBytes());
+    try {
+      final derived = await Hkdf(hmac: Hmac.sha256(), outputLength: 32)
+          .deriveKey(
+            secretKey: keyMaterialKey,
+            nonce: utf8.encode(
+              _sessionContext(
+                sessionId: sessionId,
+                localDeviceId: localDeviceId,
+                remoteDeviceId: remoteDeviceId,
+                localIdentityPem: localIdentityPem,
+                remoteIdentityPem: remoteIdentityPem,
+              ),
+            ),
+            info: utf8.encode('echat.session.v2'),
+          );
+      try {
+        final derivedBytes = await derived.extractBytes();
+        return _DerivedSessionKey(
+          keyHex: _hex(derivedBytes),
+          fingerprint: _fingerprintBytes(derivedBytes),
+        );
+      } finally {
+        derived.destroy();
+      }
+    } finally {
+      keyMaterialKey.destroy();
+      sharedSecret.destroy();
+    }
+  }
+
+  Future<SecretKeyData> _deriveMessageKey(
+    SessionSecretBundle sessionSecret, {
+    required String sessionId,
+    required String senderDeviceId,
+    required String recipientDeviceId,
+    required String messageId,
+    required int sequence,
+    required int keyEpoch,
+  }) async {
+    final rootBytes = _decodeHex(sessionSecret.sessionKeyHex);
+    if (rootBytes.length != 32) {
+      throw const SessionValidationException('Stored session key is invalid.');
+    }
+    final rootKey = SecretKeyData(rootBytes, overwriteWhenDestroyed: true);
+    try {
+      final context = jsonEncode({
+        'domain': 'echat.message-key.v1',
+        'sessionId': sessionId,
+        'senderDeviceId': senderDeviceId,
+        'recipientDeviceId': recipientDeviceId,
+        'messageId': messageId,
+        'sequence': sequence,
+        'keyEpoch': keyEpoch,
+      });
+      final derived = await Hkdf(hmac: Hmac.sha256(), outputLength: 32)
+          .deriveKey(
+            secretKey: rootKey,
+            nonce: utf8.encode('echat.message-key.salt.v1'),
+            info: utf8.encode(context),
+          );
+      final derivedBytes = await derived.extractBytes();
+      final ownedBytes = Uint8List.fromList(derivedBytes);
+      derived.destroy();
+      return SecretKeyData(ownedBytes, overwriteWhenDestroyed: true);
+    } finally {
+      rootKey.destroy();
+      rootBytes.fillRange(0, rootBytes.length, 0);
+    }
+  }
+
+  List<int> _decodeHex(String value) {
+    if (value.length.isOdd || !RegExp(r'^[0-9a-fA-F]*$').hasMatch(value)) {
+      throw const SessionValidationException(
+        'Stored session key is malformed.',
+      );
+    }
+    return [
+      for (var index = 0; index < value.length; index += 2)
+        int.parse(value.substring(index, index + 2), radix: 16),
+    ];
   }
 
   Future<T> _withSessionLock<T>(

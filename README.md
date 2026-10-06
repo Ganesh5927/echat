@@ -6,6 +6,14 @@ eChat is a privacy-first communication platform designed around one principle: c
 
 This repository is the foundational architecture and MVP plan for a secure 1-to-1 messaging product built with Flutter on the client side and a minimal, untrusted relay backend.
 
+## Current implementation
+
+- Phase 1: device identity foundation (`e9df1c1`).
+- Phase 2: secure session foundation (`84d91c1`).
+- Phase 3: local 1-to-1 text-message encryption and versioned protocol foundation.
+
+Phase 3 does not add a relay, WebSocket transport, chat UI, offline queue, message database, ratchet, or production messaging workflow. The cryptographic primitives are mature library implementations; the project-specific protocol composition has not been independently audited and is not production-approved.
+
 ## Design priorities
 
 1. Security
@@ -18,12 +26,12 @@ This repository is the foundational architecture and MVP plan for a secure 1-to-
 
 The project intentionally does not implement groups, calls, or social features in the initial milestone.
 
-## Core security model
+## Target security model
 
 - Private identity keys remain on the device.
 - Relay servers only handle encrypted packets and minimal routing metadata.
 - Message plaintext is never stored on the server.
-- Session keys are derived from authenticated key agreement and evolve over time.
+- Session keys are derived from authenticated key agreement. Per-message keys are derived for Phase 3, but no ratchet or post-compromise security is implemented.
 - Contact verification is based on cryptographic identity verification, not phone numbers.
 - Local storage is encrypted and protected by platform secure storage.
 
@@ -45,9 +53,9 @@ The project intentionally does not implement groups, calls, or social features i
 - tests - protocol, security, integration, client, server
 - tools - build and automation utilities
 
-## MVP scope
+## Planned MVP scope
 
-Version 0.1 contains only:
+The intended MVP includes:
 
 - device identity creation
 - public identity publication

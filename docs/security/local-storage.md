@@ -24,10 +24,15 @@ Platform Secure Key Storage
 The actual implementation uses:
 
 - `flutter_secure_storage` for private key storage
-- `SharedPreferences` only for public identity metadata and UI state, not private key material
+- `SharedPreferences` for public identity/session metadata and UI state, not private key material
 - strict separation between cryptographic identity and application preferences
+- `FlutterSecureStorage` for session roots and pending ephemeral session private keys
+- `SharedPreferences` for public session records and replay counters
+- callback-scoped message keys in memory only; they are not persisted
 
 The private key is never logged, never committed to source control, and never sent to the relay or backend.
+
+Phase 3 envelopes contain ciphertext and an authentication tag, not the session root. Plaintext exists briefly for UTF-8 conversion and AEAD, then the owned byte buffer is cleared. Returned Dart strings cannot be reliably zeroized.
 
 - plaintext private keys are forbidden
 - local database encryption is required

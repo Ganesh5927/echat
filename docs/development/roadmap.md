@@ -1,56 +1,31 @@
 # Development roadmap
 
-## Phase 1: architecture and protocol
+## Phase 1: device identity foundation (complete)
 
-- architecture documentation
-- trust model
-- threat model
-- identity design
-- session design
-- message format
-- replay and forward secrecy specification
+- on-device Ed25519 identity creation, storage, verification fingerprint, rotation, and deletion
 
-## Phase 2: cryptographic core
+## Phase 2: secure session foundation (complete)
 
-- secure device identity module
-- key generation and management
-- session establishment
-- message encryption and decryption
-- replay detection
-- security test suite
+- authenticated ephemeral X25519 session setup and HKDF-SHA256 session root
+- identity-pinned handshake, lifecycle records, and replay checks
 
-## Phase 3: relay backend
+## Phase 3: message protocol and encrypted-message foundation (implemented, unaudited)
 
-- envelope handling
-- encrypted queue
-- ack processing
-- relay routing
-- abuse controls
-- minimal database design
+- versioned canonical JSON envelope with strict parsing
+- AES-256-GCM encrypted text payloads and authenticated header fields
+- directional per-message HKDF-SHA256 keys and per-session replay state
+- no relay, UI, queue, persistent message database, or ratchet
 
-## Phase 4: Flutter client
+## Phase 4: independent protocol review and transport design
 
-- identity onboarding screens
-- contact verification flow
-- secure session setup
-- chat UI
-- local encrypted storage
-- offline sending and retries
+- obtain independent review of the session and message protocol composition
+- address review findings before transport integration
+- then define relay packet submission, acknowledgements, and bounded queue semantics
 
-## Phase 5: security hardening
+## Later phases
 
-- attack simulations
-- vulnerability remediation
-- protocol review
-- security regression checks
-
-## Phase 6: future expansions
-
-- encrypted attachments
-- multi-device support
-- direct transport abstraction
-- group messaging research
-- voice and video architecture
+- Flutter chat UI and local encrypted message history
+- offline delivery, attachments, groups, calls, multi-device, and direct transport
 
 ## Release gates
 

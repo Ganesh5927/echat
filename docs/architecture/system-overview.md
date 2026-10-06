@@ -4,6 +4,10 @@
 
 eChat is a privacy-first communication platform for secure person-to-person messaging. The central design principle is that the user device owns identity, private keys, plaintext, and local conversation state. The server owns transport capacity, routing, and temporary queueing; it does not become a trusted authority with access to conversation contents.
 
+## Current implementation status
+
+The repository contains the Phase 1 device identity foundation, Phase 2 authenticated session foundation, and Phase 3 local encrypted-text-message foundation. The relay, WebSocket delivery, chat UI, offline queue, message database, and ratchet are not implemented. The Phase 2/3 protocol composition is project-specific and unaudited; this repository does not claim production-ready secure messaging.
+
 ## Core trust model
 
 The relay is treated as untrusted infrastructure. It may authenticate a transport connection, route packets, and hold encrypted queue items, but it must not be able to read message contents, session keys, attachments, or conversation history.

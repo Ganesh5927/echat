@@ -48,9 +48,12 @@ Flutter UI
 
 - message envelope creation
 - session key handling
+- per-message key derivation and authenticated encryption
 - replay detection
 - decryption verification
 - key rotation and device revocation steps
+
+The current protocol package exposes high-level `sendEncryptedMessage` and `decryptIncomingMessage` operations. Widgets do not access cipher or key primitives. This local foundation has no UI or transport integration, and its protocol composition has not been independently audited.
 
 ### Secure crypto adapter
 

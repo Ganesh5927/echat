@@ -63,6 +63,10 @@ No release should proceed without passing:
 - local storage protection checks
 - key lifecycle validation
 
+## Phase 3 local tests
+
+The Phase 3 protocol package tests exercise two local devices and cover AES-GCM round trips, ciphertext/tag/header tampering, recipient/session binding, message-key separation, nonce uniqueness, replay, retries, concurrent sends/receives, malformed and noncanonical packets, and secret/plaintext exclusion. These tests do not exercise a relay, persistent database, actual device secure storage, cross-process concurrency, or independent protocol review; they are not release approval.
+
 ## Documentation requirement
 
 All security tests must be tied to a documented threat and a specific expected security property.
