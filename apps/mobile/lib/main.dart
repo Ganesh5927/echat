@@ -88,9 +88,7 @@ class _IdentityHomePageState extends State<IdentityHomePage> {
     }
 
     if (_identity == null) {
-      return CreateIdentityScreen(
-        onCreate: _createIdentity,
-      );
+      return CreateIdentityScreen(onCreate: _createIdentity);
     }
 
     return MyIdentityScreen(
@@ -115,7 +113,10 @@ class SplashScreen extends StatelessWidget {
           children: [
             Icon(Icons.shield_outlined, size: 72),
             SizedBox(height: 24),
-            Text('eChat', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+            Text(
+              'eChat',
+              style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+            ),
             SizedBox(height: 12),
             Text('Loading secure identity…'),
           ],
@@ -194,13 +195,13 @@ class _MyIdentityScreenState extends State<MyIdentityScreen> {
   @override
   Widget build(BuildContext context) {
     final identityStatus = _verified ? 'IDENTITY VERIFIED' : 'IDENTITY CREATED';
-    final qrPayload = widget.service.createQrPayload(widget.identity).toQrString();
+    final qrPayload = widget.service
+        .createQrPayload(widget.identity)
+        .toQrString();
     final preview = base64Encode(utf8.encode(qrPayload)).substring(0, 32);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Identity'),
-      ),
+      appBar: AppBar(title: const Text('My Identity')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -212,7 +213,10 @@ class _MyIdentityScreenState extends State<MyIdentityScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Security Status', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text(
+                      'Security Status',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     const SizedBox(height: 8),
                     Chip(label: Text(identityStatus)),
                     const SizedBox(height: 16),
@@ -234,26 +238,36 @@ class _MyIdentityScreenState extends State<MyIdentityScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Public identity representation', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text(
+                      'Public identity representation',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     const SizedBox(height: 12),
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHighest,
                       ),
                       child: SelectableText(widget.identity.publicKeyPem),
                     ),
                     const SizedBox(height: 16),
-                    const Text('Safe QR payload (public data only)', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text(
+                      'Safe QR payload (public data only)',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     const SizedBox(height: 8),
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Theme.of(context).dividerColor),
+                        border: Border.all(
+                          color: Theme.of(context).dividerColor,
+                        ),
                       ),
                       child: Text('QR placeholder: $preview'),
                     ),
@@ -300,7 +314,7 @@ class _MyIdentityScreenState extends State<MyIdentityScreen> {
 
 class AppSecureIdentityStore implements SecureIdentityStore {
   AppSecureIdentityStore({FlutterSecureStorage? secureStorage})
-      : _secureStorage = secureStorage ?? const FlutterSecureStorage();
+    : _secureStorage = secureStorage ?? const FlutterSecureStorage();
 
   final FlutterSecureStorage _secureStorage;
   static const String _privateKeyKey = 'echat.identity.private_key';
@@ -345,6 +359,79 @@ class AppSecureIdentityStore implements SecureIdentityStore {
   Future<bool> hasIdentity() async {
     final prefs = await _prefs;
     final privateKey = await loadPrivateKey();
-    return privateKey != null && privateKey.isNotEmpty && prefs.containsKey(_publicIdentityKey);
+    return privateKey != null &&
+        privateKey.isNotEmpty &&
+        prefs.containsKey(_publicIdentityKey);
+  }
+}
+
+class AppSecureSessionStore implements SecureSessionStore {
+  AppSecureSessionStore({FlutterSecureStorage? secureStorage})
+    : _secureStorage = secureStorage ?? const FlutterSecureStorage();
+
+  final FlutterSecureStorage _secureStorage;
+  static const String _recordPrefix = 'echat.session.record.';
+  static const String _secretPrefix = 'echat.session.secret.';
+
+  Future<SharedPreferences> get _prefs async => SharedPreferences.getInstance();
+
+  @override
+  Future<void> saveSessionRecord(String sessionId, SessionRecord record) async {
+    final prefs = await _prefs;
+    await prefs.setString(
+      '$_recordPrefix$sessionId',
+      jsonEncode(record.toJson()),
+    );
+  }
+
+  @override
+  Future<SessionRecord?> loadSessionRecord(String sessionId) async {
+    final prefs = await _prefs;
+    final value = prefs.getString('$_recordPrefix$sessionId');
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return SessionRecord.fromJson(jsonDecode(value) as Map<String, dynamic>);
+  }
+
+  @override
+  Future<void> saveSessionSecret(
+    String sessionId,
+    SessionSecretBundle bundle,
+  ) async {
+    await _secureStorage.write(
+      key: '$_secretPrefix$sessionId',
+      value: jsonEncode(bundle.toJson()),
+    );
+  }
+
+  @override
+  Future<SessionSecretBundle?> loadSessionSecret(String sessionId) async {
+    final value = await _secureStorage.read(key: '$_secretPrefix$sessionId');
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return SessionSecretBundle.fromJson(
+      jsonDecode(value) as Map<String, dynamic>,
+    );
+  }
+
+  @override
+  Future<void> deleteSession(String sessionId) async {
+    final prefs = await _prefs;
+    await prefs.remove('$_recordPrefix$sessionId');
+    await deleteSessionSecret(sessionId);
+  }
+
+  @override
+  Future<void> deleteSessionSecret(String sessionId) async {
+    await _secureStorage.delete(key: '$_secretPrefix$sessionId');
+  }
+
+  @override
+  Future<bool> hasSession(String sessionId) async {
+    final prefs = await _prefs;
+    return prefs.containsKey('$_recordPrefix$sessionId') ||
+        await _secureStorage.containsKey(key: '$_secretPrefix$sessionId');
   }
 }

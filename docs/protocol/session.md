@@ -1,57 +1,48 @@
-# Session design
+# Session Foundation
 
 ## Purpose
 
-A session establishes authenticated keys for a pair of devices and supports ongoing message encryption, authentication, and replay protection across time.
+A session foundation establishes shared key material between two previously verified device identities. This phase does not encrypt chat messages or implement a ratchet.
 
 ## Session model
 
-Each 1-to-1 conversation uses an authenticated session between two device identities. A session includes:
+The current 1-to-1 foundation records:
 
 - device A identity
 - device B identity
 - session identifier
-- message sequence state
-- replay window
-- key evolution state
-- last verified identity status
-- revocation state
+- independent send and receive sequence state
+- highest accepted sequence per direction and seen protocol message IDs
+- derived-key fingerprint
+- pending, established, or closed lifecycle state
 
 ## Session establishment
 
-The session should begin with an authenticated key agreement using a mature, audited implementation. A typical design uses a key agreement protocol with authentication properties and then derives message keys from the shared secret using a KDF.
+The implementation uses Ed25519 signatures, ephemeral X25519, and HKDF-SHA256 through the `cryptography` package. Device identity public keys must be verified out of band before session initiation; the responder API requires the expected verified initiator key. This code composes those standard primitives into a versioned two-message exchange, but the exchange itself has not received an independent protocol audit and must not be treated as production-approved.
 
 The process includes:
 
-1. device identity validation
-2. contact verification confirmation
-3. key agreement
-4. transcript authentication
-5. deriving session keys
-6. establishing initial message sequence state
-7. storing encrypted session record locally
+1. The initiator creates a session ID and ephemeral X25519 keypair.
+2. The initiator signs the versioned initiation transcript with its Ed25519 device key.
+3. The responder checks the pinned initiator identity, recipient device ID, and its own identity key.
+4. The responder creates an ephemeral X25519 keypair, derives key material with HKDF-SHA256, and signs the acceptance transcript.
+5. The initiator verifies the pinned responder identity and key fingerprint before establishing the session.
+6. Protocol message IDs and monotonically increasing sequence values reject duplicates and stale packets.
+7. The mobile adapter stores public session metadata in SharedPreferences and secret bundles in FlutterSecureStorage.
 
 ## Session key derivation
 
-A session must derive:
-
-- root secret
-- update chain or ratchet state
-- message encryption keys
-- message authentication keys
-- associated key metadata
-
-The session key must evolve over time so that compromise of a later state does not automatically expose earlier message content.
+HKDF-SHA256 derives a 256-bit session key with a context containing the session ID, both device IDs, and both identity public keys in canonical order. The fingerprint is retained for handshake confirmation. Session secrets are persisted only through `SecureSessionStore`; the mobile implementation uses FlutterSecureStorage. `MemorySecureSessionStore` is for tests and must not be used for persistent application sessions.
 
 ## Forward secrecy
 
-Forward secrecy is not achieved by merely rotating keys; it requires that each message or key epoch be derived from prior state without allowing an attacker who steals one state to derive earlier keys.
+Ephemeral DH contributes per-session forward secrecy, subject to secure deletion and device storage assumptions. This phase does not provide per-message forward secrecy.
 
-The design should use established ratcheting patterns from vetted secure messaging protocols, not a custom implementation.
+Message encryption, authenticated message records, and ratcheting are explicitly deferred. They must use a vetted protocol/library rather than a custom ratchet.
 
 ## Key evolution and ratcheting
 
-The session is expected to support:
+Future ratcheting work must support:
 
 - message key evolution
 - session key updates
@@ -63,12 +54,12 @@ When a key change occurs, device state must be updated and the contact must be r
 
 ## Replay protection
 
-Replay protection is not only time-based. Each message should include a unique message identifier and a session sequencing mechanism. The receiver tracks:
+Handshake and foundation packet replay protection is not time-based. The receiver tracks:
 
 - message IDs already seen
 - highest accepted sequence number or equivalent monotonic state
-- duplicate detection
-- out-of-order handling rules
+- duplicate message-ID detection
+- a strict increasing sequence per direction (gaps are currently permitted)
 
 Example behavior:
 
@@ -91,7 +82,7 @@ Termination must be explicit and should fail closed for any message that cannot 
 
 ## Recovery after temporary communication loss
 
-When connectivity returns, clients should recover by:
+Offline recovery is not implemented. A future client must:
 
 - resuming the existing authenticated session
 - processing queued encrypted packets
@@ -101,4 +92,4 @@ When connectivity returns, clients should recover by:
 
 ## Security assumptions
 
-The protocol assumes mature libraries and tested key derivation and ratchet logic. If a cryptographic decision is uncertain, the project must document the uncertainty and avoid inventing a custom solution.
+The cryptographic operations are provided by the mature `cryptography` package. The message exchange composition remains unaudited. Before production use, it requires independent protocol review, secure-store integration on every supported platform, and a vetted messaging ratchet. The current session foundation must not be used to claim end-to-end encrypted messaging.

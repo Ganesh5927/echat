@@ -92,6 +92,50 @@ class IdentityService {
     }
   }
 
+  Future<Signature> signIdentityMessage(List<int> message) async {
+    final keyPair = await _loadIdentityPrivateKey();
+    try {
+      return await Ed25519().sign(message, keyPair: keyPair);
+    } finally {
+      keyPair.destroy();
+    }
+  }
+
+  Future<KeyPair> _loadIdentityPrivateKey() async {
+    final identity = await loadIdentity();
+    if (identity == null) {
+      throw StateError('No device identity has been created yet.');
+    }
+
+    final privateKeyPem = await _store.loadPrivateKey();
+    if (privateKeyPem == null || privateKeyPem.isEmpty) {
+      throw StateError('Private identity key was not found.');
+    }
+
+    final keyPair = await Ed25519().newKeyPairFromSeed(
+      _decodePrivateKeyPem(privateKeyPem),
+    );
+    final publicKey = await keyPair.extractPublicKey();
+    if (base64Encode(publicKey.bytes) != identity.publicKeyBase64) {
+      throw const SecureStorageException(
+        'Stored identity keypair does not match.',
+      );
+    }
+    return keyPair;
+  }
+
+  Future<PublicKey> loadIdentityPublicKey() async {
+    final identity = await loadIdentity();
+    if (identity == null) {
+      throw StateError('No device identity has been created yet.');
+    }
+
+    return SimplePublicKey(
+      _decodePublicKeyPem(identity.publicKeyPem),
+      type: KeyPairType.ed25519,
+    );
+  }
+
   Future<PublicIdentity> getPublicIdentity() async {
     final identity = await loadIdentity();
     if (identity == null) {
@@ -166,6 +210,21 @@ class IdentityService {
     final bytes = base64Decode(sanitized);
     if (bytes.isEmpty) {
       throw const FormatException('Public key is empty.');
+    }
+    return bytes;
+  }
+
+  List<int> _decodePrivateKeyPem(String privateKeyPem) {
+    final sanitized = privateKeyPem
+        .replaceAll('-----BEGIN ECHAT DEVICE PRIVATE KEY-----', '')
+        .replaceAll('-----END ECHAT DEVICE PRIVATE KEY-----', '')
+        .replaceAll('\n', '')
+        .replaceAll('\r', '')
+        .trim();
+
+    final bytes = base64Decode(sanitized);
+    if (bytes.isEmpty) {
+      throw const FormatException('Private key is empty.');
     }
     return bytes;
   }
