@@ -48,7 +48,7 @@ class _AppBootstrapperState extends State<_AppBootstrapper> {
                 child: Padding(
                   padding: EdgeInsets.all(24),
                   child: Text(
-                    'eChat could not initialize securely. The app will stay local-first and offline-safe.',
+                    'eChat could not initialize. Restart the app, and check device storage if the problem continues.',
                     textAlign: TextAlign.center,
                   ),
                 ),

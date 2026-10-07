@@ -59,6 +59,7 @@ class MessagingController {
   bool get sessionExchangeAvailable => _sessionExchangeGateway.isConfigured;
 
   Future<LocalIdentityView?> loadLocalIdentity() async {
+    await _sessionStore.migrateLegacySessionRecords();
     final identity = await _identityService.loadIdentity();
     if (identity == null) {
       _localDeviceId = null;
@@ -83,7 +84,8 @@ class MessagingController {
 
   Future<void> activateIdentity(DeviceIdentity identity) async {
     final storedIdentity = await _identityService.loadIdentity();
-    if (storedIdentity == null || storedIdentity.deviceId != identity.deviceId) {
+    if (storedIdentity == null ||
+        storedIdentity.deviceId != identity.deviceId) {
       throw const AppMessagingException('local_identity_unavailable');
     }
     _localDeviceId = storedIdentity.deviceId;
@@ -213,8 +215,7 @@ class MessagingController {
     try {
       await _sessionExchangeGateway.sendExchange(
         recipientDeviceId: result.record.remoteDeviceId,
-        serializedExchange:
-            _pendingSessionExchanges[result.record.sessionId]!,
+        serializedExchange: _pendingSessionExchanges[result.record.sessionId]!,
       );
     } on Object {
       // The accepted session is not exposed as ready until its response is sent.
@@ -271,10 +272,11 @@ class MessagingController {
     final conversations = <AppConversation>[];
     for (final session in sessions) {
       final peer = contactsById[session.remoteDeviceId];
-      final sessionMessages = allMessages
-          .where((message) => message.sessionId == session.sessionId)
-          .toList()
-        ..sort((left, right) => left.createdAt.compareTo(right.createdAt));
+      final sessionMessages =
+          allMessages
+              .where((message) => message.sessionId == session.sessionId)
+              .toList()
+            ..sort((left, right) => left.createdAt.compareTo(right.createdAt));
       final last = sessionMessages.isEmpty
           ? null
           : _messageView(sessionMessages.last);
@@ -293,8 +295,11 @@ class MessagingController {
       );
     }
     conversations.sort((left, right) {
-      final leftAt = left.lastMessage?.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-      final rightAt = right.lastMessage?.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final leftAt =
+          left.lastMessage?.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final rightAt =
+          right.lastMessage?.createdAt ??
+          DateTime.fromMillisecondsSinceEpoch(0);
       return rightAt.compareTo(leftAt);
     });
     return List.unmodifiable(conversations);
@@ -351,9 +356,12 @@ class MessagingController {
           );
           final receipt = await _packetTransport.sendPacket(packet);
           if (receipt.packetId != stored.messageId ||
-              !const {'queued', 'duplicate', 'delivered', 'acknowledged'}.contains(
-                receipt.state,
-              )) {
+              !const {
+                'queued',
+                'duplicate',
+                'delivered',
+                'acknowledged',
+              }.contains(receipt.state)) {
             throw const AppMessagingException('invalid_submission_receipt');
           }
           await _messageStore.markSubmitted(stored.messageId);
@@ -389,7 +397,8 @@ class MessagingController {
                 message.sessionId == conversation.sessionId &&
                 message.direction == MessageDirection.incoming,
           )) {
-        _sessionOverrides[conversation.sessionId] = AppSessionStatus.established;
+        _sessionOverrides[conversation.sessionId] =
+            AppSessionStatus.established;
       }
     }
     return AppSyncResult(
@@ -472,8 +481,10 @@ class MessagingController {
       value.replaceAll(RegExp(r'\s+'), '').toLowerCase();
 
   String _requireLocalDeviceId() =>
-      _localDeviceId ?? (throw const AppMessagingException('local_identity_unavailable'));
+      _localDeviceId ??
+      (throw const AppMessagingException('local_identity_unavailable'));
 
   MessagingService _requireMessagingService() =>
-      _messagingService ?? (throw const AppMessagingException('local_identity_unavailable'));
+      _messagingService ??
+      (throw const AppMessagingException('local_identity_unavailable'));
 }

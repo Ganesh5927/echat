@@ -19,6 +19,7 @@ class MobileAppServices {
     required this.controller,
     required this.relayConfigurationMessage,
     required this.messageStore,
+    required this.isTemporaryLocalMode,
   });
 
   static const String relayCredentialStorageKey =
@@ -30,6 +31,7 @@ class MobileAppServices {
   final MessagingController controller;
   final String relayConfigurationMessage;
   final EncryptedMessageStore messageStore;
+  final bool isTemporaryLocalMode;
 
   static Future<MobileAppServices> bootstrap({
     Directory? supportDirectory,
@@ -37,6 +39,7 @@ class MobileAppServices {
     SecureValueStore? secureValueStore,
     EncryptedRecordBackend? messageBackend,
     EncryptedRecordBackend? contactTrustBackend,
+    EncryptedRecordBackend? sessionBackend,
     PacketTransport? packetTransport,
     SessionExchangeGateway sessionExchangeGateway =
         const UnavailableSessionExchangeGateway(),
@@ -54,7 +57,13 @@ class MobileAppServices {
         final identityService = IdentityService(
           store: AppSecureIdentityStore(secureStore: secureValues),
         );
-        final sessionStore = AppSecureSessionStore(secureStore: secureValues);
+        final sessionStore = AppSecureSessionStore(
+          secureStore: secureValues,
+          encryptedRecords: EncryptedSessionRecordStore(
+            backend: sessionBackend ?? MemoryEncryptedRecordBackend(),
+            keyProvider: keyProvider.call,
+          ),
+        );
         final sessionService = SessionService(
           identityService: identityService,
           sessionStore: sessionStore,
@@ -72,7 +81,10 @@ class MobileAppServices {
                 relayOrigin: relayOrigin,
                 secureStore: secureValues,
               )
-            : (packetTransport, 'Transport supplied by application composition.');
+            : (
+                packetTransport,
+                'Transport supplied by application composition.',
+              );
         final controller = MessagingController(
           identityService: identityService,
           sessionService: sessionService,
@@ -86,6 +98,7 @@ class MobileAppServices {
           controller: controller,
           relayConfigurationMessage: configuredTransport.$2,
           messageStore: messageStore,
+          isTemporaryLocalMode: true,
         );
       }
 
@@ -99,12 +112,23 @@ class MobileAppServices {
       final contactDirectory = Directory(
         '${appDirectory.path}${Platform.pathSeparator}contact-trust',
       );
+      final sessionDirectory = Directory(
+        '${appDirectory.path}${Platform.pathSeparator}sessions',
+      );
       final keyProvider = AppLocalStorageKeyProvider(store: secureValues);
 
       final identityService = IdentityService(
         store: AppSecureIdentityStore(secureStore: secureValues),
       );
-      final sessionStore = AppSecureSessionStore(secureStore: secureValues);
+      final sessionStore = AppSecureSessionStore(
+        secureStore: secureValues,
+        encryptedRecords: EncryptedSessionRecordStore(
+          backend:
+              sessionBackend ??
+              FileEncryptedRecordBackend(directory: sessionDirectory),
+          keyProvider: keyProvider.call,
+        ),
+      );
       final sessionService = SessionService(
         identityService: identityService,
         sessionStore: sessionStore,
@@ -142,6 +166,7 @@ class MobileAppServices {
         controller: controller,
         relayConfigurationMessage: configuredTransport.$2,
         messageStore: messageStore,
+        isTemporaryLocalMode: false,
       );
       final identity = await identityService.loadIdentity();
       if (identity != null) await controller.activateIdentity(identity);
@@ -155,6 +180,10 @@ class MobileAppServices {
       );
       final fallbackSessionStore = AppSecureSessionStore(
         secureStore: fallbackSecureStore,
+        encryptedRecords: EncryptedSessionRecordStore(
+          backend: MemoryEncryptedRecordBackend(),
+          keyProvider: fallbackKeyProvider.call,
+        ),
       );
       final fallbackSessionService = SessionService(
         identityService: fallbackIdentityService,
@@ -176,7 +205,9 @@ class MobileAppServices {
           store: fallbackContactTrustStore,
         ),
         messageStore: fallbackMessageStore,
-        packetTransport: UnavailablePacketTransport('secure_storage_unavailable'),
+        packetTransport: UnavailablePacketTransport(
+          'secure_storage_unavailable',
+        ),
         sessionExchangeGateway: sessionExchangeGateway,
       );
       return MobileAppServices._(
@@ -184,6 +215,7 @@ class MobileAppServices {
         relayConfigurationMessage:
             'Local secure storage unavailable; relay and session exchange remain unavailable.',
         messageStore: fallbackMessageStore,
+        isTemporaryLocalMode: true,
       );
     }
   }

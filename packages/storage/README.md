@@ -1,7 +1,9 @@
 # Storage package
 
-`EncryptedMessageStore` encrypts each complete message record, including plaintext and the serialized end-to-end encrypted packet, with AES-256-GCM before passing it to an `EncryptedRecordBackend`. The file backend stores ciphertext records under SHA-256-derived filenames and uses temporary/backup files when replacing records. The memory backend is intended for tests and ephemeral use.
+`EncryptedMessageStore`, `EncryptedContactTrustStore`, and `EncryptedSessionRecordStore` encrypt their complete records with AES-256-GCM before passing them to an `EncryptedRecordBackend`. The file backend stores ciphertext records under SHA-256-derived filenames and uses temporary/backup files when replacing records. The memory backend is intended for tests and ephemeral use.
 
-The store accepts a `LocalStorageKeyProvider`; it does not generate, persist, or wrap the key. The application must provide a stable key from platform secure storage. The current Flutter app does not yet wire that provider. Losing the key makes local records unavailable.
+The stores accept a `LocalStorageKeyProvider`; they do not generate, persist, or wrap the key. The application must provide a stable key from platform secure storage. Losing the key makes encrypted local records unavailable. Session secret bundles are stored separately through platform secure storage.
+
+On startup, the mobile app migrates legacy plaintext session records from `SharedPreferences` by writing each encrypted record before removing its plaintext preference. A failed encrypted write leaves the legacy record in place for a later retry.
 
 File counts, ciphertext sizes, and filesystem activity remain observable. File deletion is not guaranteed secure erasure, plaintext Dart strings cannot be reliably zeroized, and no database migration or cross-process locking layer is provided.

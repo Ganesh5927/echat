@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:echat_identity/echat_identity.dart';
+import 'package:echat_storage/echat_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'secure_value_store.dart';
@@ -53,44 +55,42 @@ class AppSecureIdentityStore implements SecureIdentityStore {
 }
 
 class AppSecureSessionStore implements SecureSessionStore {
-  AppSecureSessionStore({required this._secureStore});
+  AppSecureSessionStore({
+    required this._secureStore,
+    required this._encryptedRecords,
+  });
 
   final SecureValueStore _secureStore;
+  final EncryptedSessionRecordStore _encryptedRecords;
   static const String _recordPrefix = 'echat.session.record.';
   static const String _secretPrefix = 'echat.session.secret.';
+  Future<void> _recordTail = Future<void>.value();
 
   Future<SharedPreferences> get _prefs async => SharedPreferences.getInstance();
 
   Future<List<SessionRecord>> listSessionRecords() async {
-    final prefs = await _prefs;
-    final sessions = <SessionRecord>[];
-    for (final key in prefs.getKeys().where(
-      (key) => key.startsWith(_recordPrefix),
-    )) {
-      final value = prefs.getString(key);
-      if (value != null && value.isNotEmpty) {
-        sessions.add(
-          SessionRecord.fromJson(jsonDecode(value) as Map<String, dynamic>),
-        );
-      }
-    }
-    return List.unmodifiable(sessions);
+    return _serializeRecords(() async {
+      await _migrateLegacyRecords();
+      return _encryptedRecords.loadAll();
+    });
   }
 
-  @override
-  Future<void> saveSessionRecord(String sessionId, SessionRecord record) async {
-    await (await _prefs).setString(
-      '$_recordPrefix$sessionId',
-      jsonEncode(record.toJson()),
-    );
-  }
+  Future<void> migrateLegacySessionRecords() =>
+      _serializeRecords(_migrateLegacyRecords);
 
   @override
-  Future<SessionRecord?> loadSessionRecord(String sessionId) async {
-    final value = (await _prefs).getString('$_recordPrefix$sessionId');
-    if (value == null || value.isEmpty) return null;
-    return SessionRecord.fromJson(jsonDecode(value) as Map<String, dynamic>);
-  }
+  Future<void> saveSessionRecord(String sessionId, SessionRecord record) =>
+      _serializeRecords(() async {
+        await _encryptedRecords.save(sessionId, record);
+        await (await _prefs).remove('$_recordPrefix$sessionId');
+      });
+
+  @override
+  Future<SessionRecord?> loadSessionRecord(String sessionId) =>
+      _serializeRecords(() async {
+        await _migrateLegacyRecord(sessionId);
+        return _encryptedRecords.load(sessionId);
+      });
 
   @override
   Future<void> saveSessionSecret(
@@ -111,10 +111,11 @@ class AppSecureSessionStore implements SecureSessionStore {
   }
 
   @override
-  Future<void> deleteSession(String sessionId) async {
+  Future<void> deleteSession(String sessionId) => _serializeRecords(() async {
+    await _encryptedRecords.delete(sessionId);
     await (await _prefs).remove('$_recordPrefix$sessionId');
     await deleteSessionSecret(sessionId);
-  }
+  });
 
   @override
   Future<void> deleteSessionSecret(String sessionId) =>
@@ -122,6 +123,47 @@ class AppSecureSessionStore implements SecureSessionStore {
 
   @override
   Future<bool> hasSession(String sessionId) async =>
-      (await _prefs).containsKey('$_recordPrefix$sessionId') ||
+      await loadSessionRecord(sessionId) != null ||
       await _secureStore.read('$_secretPrefix$sessionId') != null;
+
+  Future<void> _migrateLegacyRecords() async {
+    final prefs = await _prefs;
+    final sessionIds = prefs
+        .getKeys()
+        .where((key) => key.startsWith(_recordPrefix))
+        .map((key) => key.substring(_recordPrefix.length))
+        .toList();
+    for (final sessionId in sessionIds) {
+      await _migrateLegacyRecord(sessionId);
+    }
+  }
+
+  Future<void> _migrateLegacyRecord(String sessionId) async {
+    final prefs = await _prefs;
+    final key = '$_recordPrefix$sessionId';
+    final value = prefs.getString(key);
+    if (value == null || value.isEmpty) return;
+    final record = SessionRecord.fromJson(
+      jsonDecode(value) as Map<String, dynamic>,
+    );
+    if (record.sessionId != sessionId) {
+      throw const FormatException('Session record key does not match record.');
+    }
+    await _encryptedRecords.save(sessionId, record);
+    await prefs.remove(key);
+  }
+
+  Future<T> _serializeRecords<T>(Future<T> Function() action) {
+    final previous = _recordTail;
+    final release = Completer<void>();
+    _recordTail = release.future;
+    return () async {
+      await previous;
+      try {
+        return await action();
+      } finally {
+        release.complete();
+      }
+    }();
+  }
 }

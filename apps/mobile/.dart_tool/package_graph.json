@@ -15,6 +15,7 @@
         "echat_transport",
         "flutter",
         "flutter_secure_storage",
+        "intl",
         "path_provider",
         "shared_preferences"
       ],
@@ -697,6 +698,15 @@
         "collection",
         "meta",
         "pub_semver"
+      ]
+    },
+    {
+      "name": "intl",
+      "version": "0.20.3",
+      "dependencies": [
+        "clock",
+        "meta",
+        "path"
       ]
     }
   ],
