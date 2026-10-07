@@ -15,7 +15,7 @@ class ConversationsScreen extends StatefulWidget {
 }
 
 String _formatConversationTime(AppConversation conversation) {
-  final value = conversation.lastMessage?.createdAt;
+  final value = conversation.lastMessage?.createdAt.toLocal();
   if (value == null) return '';
   final now = DateTime.now();
   final difference = now.difference(value);
@@ -27,12 +27,19 @@ String _formatConversationTime(AppConversation conversation) {
 }
 
 class _ConversationsScreenState extends State<ConversationsScreen> {
+  final TextEditingController _searchController = TextEditingController();
   late Future<List<AppConversation>> _conversations;
 
   @override
   void initState() {
     super.initState();
     _conversations = widget.controller.conversations();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _refresh() async {
@@ -94,7 +101,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                 color: EchatColors.accent.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.shield_rounded,
                 size: 20,
                 color: EchatColors.accent,
@@ -125,24 +132,32 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 760),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Messages',
-                            style: Theme.of(context).textTheme.headlineSmall
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          const SizedBox(height: EchatSpacing.xs),
-                          Text(
-                            'Your conversations',
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(color: EchatColors.textSecondary),
-                          ),
-                        ],
+                    Text(
+                      'Messages',
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: EchatSpacing.xs),
+                    Text(
+                      'Your conversations',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: EchatColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: EchatSpacing.md),
+                    Semantics(
+                      label: 'Search local conversations and recent previews',
+                      child: TextField(
+                        key: const Key('conversation-search'),
+                        controller: _searchController,
+                        onChanged: (_) => setState(() {}),
+                        decoration: const InputDecoration(
+                          labelText: 'Search conversations',
+                          prefixIcon: Icon(Icons.search_rounded),
+                        ),
                       ),
                     ),
                   ],
@@ -190,6 +205,36 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                       ],
                     );
                   }
+                  final query = _searchController.text.trim().toLowerCase();
+                  final visibleConversations = conversations
+                      .where((conversation) {
+                        if (query.isEmpty) return true;
+                        return conversation.displayAlias.toLowerCase().contains(
+                              query,
+                            ) ||
+                            conversation.peerDeviceId.toLowerCase().contains(
+                              query,
+                            ) ||
+                            (conversation.lastMessage?.body
+                                    .toLowerCase()
+                                    .contains(query) ??
+                                false);
+                      })
+                      .toList(growable: false);
+                  if (visibleConversations.isEmpty) {
+                    return ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: const [
+                        SizedBox(height: 72),
+                        EchatEmptyState(
+                          icon: Icons.search_off_rounded,
+                          title: 'No local matches',
+                          message:
+                              'Search checks contact names, device IDs, and recent locally stored message previews on this device only.',
+                        ),
+                      ],
+                    );
+                  }
                   return ListView.separated(
                     key: const Key('conversation-list'),
                     physics: const AlwaysScrollableScrollPhysics(),
@@ -197,11 +242,11 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                       horizontal: EchatSpacing.lg,
                       vertical: EchatSpacing.md,
                     ),
-                    itemCount: conversations.length,
+                    itemCount: visibleConversations.length,
                     separatorBuilder: (_, __) =>
                         const SizedBox(height: EchatSpacing.sm),
                     itemBuilder: (context, index) {
-                      final conversation = conversations[index];
+                      final conversation = visibleConversations[index];
                       return Center(
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 760),
@@ -251,6 +296,20 @@ class _RelayStatusBanner extends StatelessWidget {
             'Pending messages remain in your encrypted local outbox while connecting.',
         icon: Icons.sync_rounded,
         color: EchatColors.accent,
+      ),
+      AppConnectionStatus.authenticating => (
+        title: 'Authenticating device',
+        message:
+            'The relay is checking a signed challenge for this device. Pending messages remain encrypted locally.',
+        icon: Icons.verified_user_outlined,
+        color: EchatColors.accent,
+      ),
+      AppConnectionStatus.authenticationFailed => (
+        title: 'Relay authentication failed',
+        message:
+            'This device is not authenticated with the relay. Pending messages remain encrypted locally.',
+        icon: Icons.gpp_bad_outlined,
+        color: EchatColors.danger,
       ),
       AppConnectionStatus.connected => (
         title: '',
@@ -415,7 +474,7 @@ class _ConversationCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: EchatSpacing.sm),
-                    const Icon(
+                    Icon(
                       Icons.chevron_right_rounded,
                       color: EchatColors.muted,
                       semanticLabel: 'Open conversation',

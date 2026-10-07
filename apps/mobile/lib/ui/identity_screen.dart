@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../application/messaging_models.dart';
 import 'echat_theme.dart';
@@ -55,6 +57,23 @@ class IdentityScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _copyPublicIdentity(BuildContext context) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: identity.publicQrJson));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Public identity payload copied.')),
+        );
+      }
+    } on Object {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Public identity could not be copied.')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: EchatColors.background,
@@ -68,7 +87,7 @@ class IdentityScreen extends StatelessWidget {
               color: EchatColors.accent.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.shield_rounded,
               size: 20,
               color: EchatColors.accent,
@@ -182,7 +201,7 @@ class IdentityScreen extends StatelessWidget {
                                 ),
                                 borderRadius: BorderRadius.circular(15),
                               ),
-                              child: const Icon(
+                              child: Icon(
                                 Icons.fingerprint_rounded,
                                 color: EchatColors.accent,
                               ),
@@ -238,7 +257,7 @@ class IdentityScreen extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.ios_share_rounded,
                               color: EchatColors.accent,
                             ),
@@ -260,6 +279,39 @@ class IdentityScreen extends StatelessWidget {
                                 color: EchatColors.textSecondary,
                                 height: 1.45,
                               ),
+                        ),
+                        const SizedBox(height: EchatSpacing.md),
+                        Center(
+                          child: Semantics(
+                            image: true,
+                            label:
+                                'QR code containing public identity information',
+                            child: Container(
+                              padding: const EdgeInsets.all(EchatSpacing.md),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: QrImageView(
+                                key: const Key('public-identity-qr'),
+                                data: identity.publicQrJson,
+                                version: QrVersions.auto,
+                                size: 220,
+                                backgroundColor: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: EchatSpacing.md),
+                        Semantics(
+                          label: 'Copy public identity payload',
+                          button: true,
+                          child: OutlinedButton.icon(
+                            key: const Key('copy-public-identity'),
+                            onPressed: () => _copyPublicIdentity(context),
+                            icon: const Icon(Icons.copy_rounded),
+                            label: const Text('Copy public identity payload'),
+                          ),
                         ),
                         const SizedBox(height: EchatSpacing.md),
                         Container(
@@ -292,7 +344,7 @@ class IdentityScreen extends StatelessWidget {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.lock_outline_rounded,
                           color: EchatColors.success,
                         ),

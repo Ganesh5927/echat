@@ -35,11 +35,13 @@ void main() {
       final identity = await identityService.createIdentity();
       final trust = ContactTrustService(store: store());
       await trust.verifyContact(identityService.createQrPayload(identity));
+      await trust.updateDisplayName(identity.deviceId, 'Local contact name');
 
       final raw = utf8.decode((await backend.readAll()).single);
       expect(raw, isNot(contains(identity.deviceId)));
       expect(raw, isNot(contains(identity.publicKeyPem)));
       expect(raw, isNot(contains(identity.fingerprint)));
+      expect(raw, isNot(contains('Local contact name')));
 
       final reopened = ContactTrustService(
         store: EncryptedContactTrustStore(
@@ -50,6 +52,10 @@ void main() {
       expect(
         (await reopened.requireVerified(identity.deviceId)).fingerprint,
         identity.fingerprint,
+      );
+      expect(
+        (await reopened.getContact(identity.deviceId))?.displayName,
+        'Local contact name',
       );
       await reopened.revokeContact(identity.deviceId);
 

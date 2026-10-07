@@ -9,14 +9,16 @@ enum AppSessionStatus {
   restoredNeedsReview,
 }
 
-enum AppConnectionStatus { notConfigured, disconnected, connecting, connected }
-
-enum AppMessageStatus {
-  pending,
-  submittedToRelay,
-  receivedLocally,
-  failed,
+enum AppConnectionStatus {
+  notConfigured,
+  disconnected,
+  connecting,
+  authenticating,
+  authenticationFailed,
+  connected,
 }
+
+enum AppMessageStatus { pending, submittedToRelay, receivedLocally, failed }
 
 class LocalIdentityView {
   const LocalIdentityView({
@@ -63,15 +65,14 @@ class AppMessage {
   final AppMessageStatus status;
   final DateTime createdAt;
 }
+
 class AppMessageSummary {
-  const AppMessageSummary({
-    required this.status,
-    required this.message,
-  });
+  const AppMessageSummary({required this.status, required this.message});
 
   final AppMessageStatus status;
   final String message;
 }
+
 class AppConversation {
   const AppConversation({
     required this.sessionId,

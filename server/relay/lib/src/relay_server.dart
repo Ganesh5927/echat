@@ -13,6 +13,7 @@ Future<HttpServer> serveRelaySecurely({
   if (port < 1 || port > 65535) {
     throw ArgumentError('Relay listener configuration is invalid.');
   }
+  await api.initialize();
   final server = await shelf_io.serve(
     api.handler,
     address,

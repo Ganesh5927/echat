@@ -45,14 +45,26 @@ class MessagingController {
 
   bool get hasActiveIdentity => _localDeviceId != null;
 
+  Stream<TransportConnectionState> get connectionStates =>
+      _packetTransport.connectionStates;
+
   AppConnectionStatus get connectionStatus {
     if (_packetTransport is UnavailablePacketTransport) {
-      return AppConnectionStatus.notConfigured;
+      return _packetTransport.reason == 'relay_endpoint_not_configured'
+          ? AppConnectionStatus.notConfigured
+          : AppConnectionStatus.disconnected;
     }
     return switch (_packetTransport.connectionState) {
       TransportConnectionState.disconnected => AppConnectionStatus.disconnected,
       TransportConnectionState.connecting => AppConnectionStatus.connecting,
-      TransportConnectionState.connected => AppConnectionStatus.connected,
+      TransportConnectionState.authenticating =>
+        AppConnectionStatus.authenticating,
+      TransportConnectionState.authenticationFailed =>
+        AppConnectionStatus.authenticationFailed,
+      TransportConnectionState.connected =>
+        _packetTransport.isAuthenticated
+            ? AppConnectionStatus.connected
+            : AppConnectionStatus.disconnected,
     };
   }
 
@@ -113,6 +125,16 @@ class MessagingController {
 
   Future<AppContact> observeContactQr(String qrJson) async =>
       _contactView(await _contactTrustService.observeQr(qrJson));
+
+  Future<AppContact> updateContactDisplayName({
+    required String deviceId,
+    required String displayName,
+  }) async => _contactView(
+    await _contactTrustService.updateDisplayName(
+      deviceId,
+      displayName.trim().isEmpty ? null : displayName,
+    ),
+  );
 
   Future<AppContact> verifyContactFingerprint({
     required String deviceId,
@@ -419,7 +441,7 @@ class MessagingController {
 
   AppContact _contactView(ContactTrustRecord record) => AppContact(
     deviceId: record.deviceId,
-    displayAlias: record.deviceId,
+    displayAlias: record.displayName ?? record.deviceId,
     fingerprint: record.state == ContactTrustState.identityChanged
         ? record.candidateFingerprint ?? record.fingerprint
         : record.fingerprint,

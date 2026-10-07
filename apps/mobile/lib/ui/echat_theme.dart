@@ -14,33 +14,87 @@ class EchatSpacing {
   static const double xxl = 24;
 }
 
+enum EchatThemeMode { system, light, dark, amoled }
+
+enum EchatAccent { blue, cyan, purple, green }
+
 class EchatColors {
-  static const Color background = Color(0xFF0B1020);
-  static const Color surface = Color(0xFF101827);
-  static const Color surfaceElevated = Color(0xFF172033);
-  static const Color surfaceHigh = Color(0xFF1C2438);
-  static const Color border = Color(0xFF2B3650);
-  static const Color textPrimary = Color(0xFFEAF2FF);
-  static const Color textSecondary = Color(0xFF9AA9C0);
-  static const Color accent = Color(0xFF7DD3FC);
-  static const Color success = Color(0xFF4ADE80);
-  static const Color warning = Color(0xFFFACC15);
-  static const Color danger = Color(0xFFF87171);
-  static const Color muted = Color(0xFF7C8AA5);
+  static Color background = const Color(0xFF0B1020);
+  static Color surface = const Color(0xFF101827);
+  static Color surfaceElevated = const Color(0xFF172033);
+  static Color surfaceHigh = const Color(0xFF1C2438);
+  static Color border = const Color(0xFF2B3650);
+  static Color textPrimary = const Color(0xFFEAF2FF);
+  static Color textSecondary = const Color(0xFF9AA9C0);
+  static Color accent = const Color(0xFF7DD3FC);
+  static Color success = const Color(0xFF4ADE80);
+  static Color warning = const Color(0xFFFACC15);
+  static Color danger = const Color(0xFFF87171);
+  static Color muted = const Color(0xFF7C8AA5);
 }
 
 class EchatTheme {
-  static ThemeData dark() {
+  static ThemeData dark() =>
+      themed(mode: EchatThemeMode.dark, accent: EchatAccent.cyan);
+
+  static ThemeData themed({
+    required EchatThemeMode mode,
+    required EchatAccent accent,
+    Brightness systemBrightness = Brightness.dark,
+  }) {
+    final brightness = switch (mode) {
+      EchatThemeMode.system => systemBrightness,
+      EchatThemeMode.light => Brightness.light,
+      EchatThemeMode.dark || EchatThemeMode.amoled => Brightness.dark,
+    };
+    final isDark = brightness == Brightness.dark;
+    final isAmoled = mode == EchatThemeMode.amoled;
+    final accentColor = _accentColor(accent, isDark);
+    EchatColors.background = isDark
+        ? (isAmoled ? const Color(0xFF000000) : const Color(0xFF0B1020))
+        : const Color(0xFFF4F6FA);
+    EchatColors.surface = isDark
+        ? (isAmoled ? const Color(0xFF080B11) : const Color(0xFF101827))
+        : const Color(0xFFFFFFFF);
+    EchatColors.surfaceElevated = isDark
+        ? (isAmoled ? const Color(0xFF10141D) : const Color(0xFF172033))
+        : const Color(0xFFEAF0F7);
+    EchatColors.surfaceHigh = isDark
+        ? (isAmoled ? const Color(0xFF171C27) : const Color(0xFF1C2438))
+        : const Color(0xFFDDE6F1);
+    EchatColors.border = isDark
+        ? const Color(0xFF2B3650)
+        : const Color(0xFFC7D2E0);
+    EchatColors.textPrimary = isDark
+        ? const Color(0xFFEAF2FF)
+        : const Color(0xFF172033);
+    EchatColors.textSecondary = isDark
+        ? const Color(0xFF9AA9C0)
+        : const Color(0xFF46546A);
+    EchatColors.accent = accentColor;
+    EchatColors.success = isDark
+        ? const Color(0xFF4ADE80)
+        : const Color(0xFF167A3E);
+    EchatColors.warning = isDark
+        ? const Color(0xFFFACC15)
+        : const Color(0xFF8A5700);
+    EchatColors.danger = isDark
+        ? const Color(0xFFF87171)
+        : const Color(0xFFB42332);
+    EchatColors.muted = isDark
+        ? const Color(0xFF7C8AA5)
+        : const Color(0xFF59677C);
+
     final base = ThemeData(
       useMaterial3: true,
-      brightness: Brightness.dark,
+      brightness: brightness,
       fontFamily: 'Roboto',
       scaffoldBackgroundColor: EchatColors.background,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: EchatColors.accent,
-        brightness: Brightness.dark,
+        seedColor: accentColor,
+        brightness: brightness,
         surface: EchatColors.surface,
-        primary: EchatColors.accent,
+        primary: accentColor,
         secondary: EchatColors.success,
         tertiary: EchatColors.warning,
       ),
@@ -63,7 +117,7 @@ class EchatTheme {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: EchatColors.border),
+          side: BorderSide(color: EchatColors.border),
         ),
         margin: const EdgeInsets.symmetric(vertical: 6),
       ),
@@ -91,15 +145,15 @@ class EchatTheme {
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: EchatColors.border),
+          borderSide: BorderSide(color: EchatColors.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: EchatColors.border),
+          borderSide: BorderSide(color: EchatColors.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: EchatColors.accent),
+          borderSide: BorderSide(color: EchatColors.accent),
         ),
         hintStyle: base.textTheme.bodyMedium?.copyWith(
           color: EchatColors.textSecondary,
@@ -115,6 +169,18 @@ class EchatTheme {
       ),
     );
   }
+
+  static Color _accentColor(EchatAccent accent, bool isDark) =>
+      switch ((accent, isDark)) {
+        (EchatAccent.blue, true) => const Color(0xFF93B4FF),
+        (EchatAccent.blue, false) => const Color(0xFF2458B8),
+        (EchatAccent.cyan, true) => const Color(0xFF7DD3FC),
+        (EchatAccent.cyan, false) => const Color(0xFF087E9B),
+        (EchatAccent.purple, true) => const Color(0xFFC4A1FF),
+        (EchatAccent.purple, false) => const Color(0xFF7041A8),
+        (EchatAccent.green, true) => const Color(0xFF83D7A0),
+        (EchatAccent.green, false) => const Color(0xFF23734A),
+      };
 }
 
 class EchatStatusChip extends StatelessWidget {

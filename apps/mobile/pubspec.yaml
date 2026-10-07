@@ -1,5 +1,5 @@
 name: echat_mobile
-description: Minimal Flutter client for the eChat device identity foundation.
+description: Flutter client for eChat identity, contacts, and encrypted messaging.
 publish_to: 'none'
 version: 0.1.0
 
@@ -24,6 +24,8 @@ dependencies:
     path: ../../packages/storage
   echat_transport:
     path: ../../packages/transport
+  image_picker: ^1.2.4
+  qr_flutter: 4.1.0
 
 dev_dependencies:
   flutter_test:

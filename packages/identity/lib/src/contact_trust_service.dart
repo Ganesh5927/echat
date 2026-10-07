@@ -24,6 +24,7 @@ class ContactTrustRecord {
     required this.updatedAt,
     this.candidatePublicKeyPem,
     this.candidateFingerprint,
+    this.displayName,
   });
 
   final String deviceId;
@@ -34,6 +35,7 @@ class ContactTrustRecord {
   final DateTime updatedAt;
   final String? candidatePublicKeyPem;
   final String? candidateFingerprint;
+  final String? displayName;
 
   Map<String, Object?> toJson() => {
     'deviceId': deviceId,
@@ -44,6 +46,7 @@ class ContactTrustRecord {
     'updatedAt': updatedAt.toUtc().toIso8601String(),
     'candidatePublicKeyPem': candidatePublicKeyPem,
     'candidateFingerprint': candidateFingerprint,
+    'displayName': displayName,
   };
 
   factory ContactTrustRecord.fromJson(Map<String, dynamic> json) {
@@ -57,8 +60,17 @@ class ContactTrustRecord {
       'candidatePublicKeyPem',
       'candidateFingerprint',
     };
-    if (json.length != fields.length ||
-        !json.keys.toSet().containsAll(fields)) {
+    final keys = json.keys.toSet();
+    final hasDisplayName = keys.contains('displayName');
+    final legacyShape =
+        !hasDisplayName &&
+        keys.length == fields.length &&
+        keys.containsAll(fields);
+    final currentShape =
+        hasDisplayName &&
+        keys.length == fields.length + 1 &&
+        keys.containsAll({...fields, 'displayName'});
+    if (!legacyShape && !currentShape) {
       throw const ContactTrustException('malformed_trust_record');
     }
     try {
@@ -73,6 +85,7 @@ class ContactTrustRecord {
         updatedAt: DateTime.parse(json['updatedAt'] as String).toUtc(),
         candidatePublicKeyPem: json['candidatePublicKeyPem'] as String?,
         candidateFingerprint: json['candidateFingerprint'] as String?,
+        displayName: hasDisplayName ? json['displayName'] as String? : null,
       );
       PublicIdentityQrPayload(
         version: PublicIdentityQrPayload.currentVersion,
@@ -84,6 +97,9 @@ class ContactTrustRecord {
       final hasCandidatePem = record.candidatePublicKeyPem != null;
       final hasCandidateFingerprint = record.candidateFingerprint != null;
       if (record.deviceId.isEmpty ||
+          (record.displayName != null &&
+              (record.displayName!.trim().isEmpty ||
+                  record.displayName!.length > 64)) ||
           (record.state == ContactTrustState.identityChanged) !=
               (hasCandidatePem && hasCandidateFingerprint) ||
           hasCandidatePem != hasCandidateFingerprint) {
@@ -163,6 +179,34 @@ class ContactTrustService {
     return _withDeviceLock(identity.deviceId, () => _observeIdentity(identity));
   }
 
+  Future<ContactTrustRecord> updateDisplayName(
+    String deviceId,
+    String? displayName,
+  ) => _withDeviceLock(deviceId, () async {
+    final current = await _store.loadContact(deviceId);
+    if (current == null) {
+      throw const ContactTrustException('contact_not_found');
+    }
+    final normalizedName = displayName?.trim();
+    if (normalizedName != null &&
+        (normalizedName.isEmpty || normalizedName.length > 64)) {
+      throw const ContactTrustException('invalid_contact_display_name');
+    }
+    final updated = ContactTrustRecord(
+      deviceId: current.deviceId,
+      publicKeyPem: current.publicKeyPem,
+      fingerprint: current.fingerprint,
+      state: current.state,
+      createdAt: current.createdAt,
+      updatedAt: _clock().toUtc(),
+      candidatePublicKeyPem: current.candidatePublicKeyPem,
+      candidateFingerprint: current.candidateFingerprint,
+      displayName: normalizedName,
+    );
+    await _store.saveContact(updated);
+    return updated;
+  });
+
   Future<ContactTrustRecord> _observeIdentity(
     PublicIdentityQrPayload identity,
   ) async {
@@ -198,6 +242,7 @@ class ContactTrustService {
       updatedAt: now,
       candidatePublicKeyPem: identity.publicKeyPem,
       candidateFingerprint: identity.fingerprint,
+      displayName: current.displayName,
     );
     await _store.saveContact(changed);
     return changed;
@@ -234,6 +279,7 @@ class ContactTrustService {
         state: ContactTrustState.verified,
         createdAt: current.createdAt,
         updatedAt: now,
+        displayName: current.displayName,
       );
       await _store.saveContact(verified);
       return verified;
@@ -259,6 +305,7 @@ class ContactTrustService {
         state: ContactTrustState.verified,
         now: _clock().toUtc(),
         createdAt: current.createdAt,
+        displayName: current.displayName,
       );
       await _store.saveContact(verified);
       return verified;
@@ -279,6 +326,7 @@ class ContactTrustService {
           state: ContactTrustState.revoked,
           createdAt: current.createdAt,
           updatedAt: _clock().toUtc(),
+          displayName: current.displayName,
         );
         await _store.saveContact(revoked);
         return revoked;
@@ -327,6 +375,7 @@ class ContactTrustService {
     required ContactTrustState state,
     required DateTime now,
     DateTime? createdAt,
+    String? displayName,
   }) => ContactTrustRecord(
     deviceId: identity.deviceId,
     publicKeyPem: identity.publicKeyPem,
@@ -334,6 +383,7 @@ class ContactTrustService {
     state: state,
     createdAt: createdAt ?? now,
     updatedAt: now,
+    displayName: displayName,
   );
 
   bool _sameIdentity(

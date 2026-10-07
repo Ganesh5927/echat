@@ -16,6 +16,7 @@ class ContactsScreen extends StatefulWidget {
 
 class _ContactsScreenState extends State<ContactsScreen> {
   final TextEditingController _payloadController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
   late Future<List<AppContact>> _contacts;
   bool _importing = false;
 
@@ -28,6 +29,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
   @override
   void dispose() {
     _payloadController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -100,7 +102,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
               color: EchatColors.accent.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.shield_rounded,
               size: 20,
               color: EchatColors.accent,
@@ -159,7 +161,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         children: [
                           Row(
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.person_add_alt_1_rounded,
                                 color: EchatColors.accent,
                               ),
@@ -263,10 +265,54 @@ class _ContactsScreenState extends State<ContactsScreen> {
                           ),
                         );
                       }
+                      final query = _searchController.text.trim().toLowerCase();
+                      final visibleContacts = contacts
+                          .where((contact) {
+                            if (query.isEmpty) return true;
+                            return contact.displayAlias.toLowerCase().contains(
+                                  query,
+                                ) ||
+                                contact.deviceId.toLowerCase().contains(
+                                  query,
+                                ) ||
+                                contact.fingerprint.toLowerCase().contains(
+                                  query,
+                                ) ||
+                                _trustLabel(
+                                  contact.trustStatus,
+                                ).toLowerCase().contains(query);
+                          })
+                          .toList(growable: false);
                       return Column(
                         key: const Key('contact-list'),
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          for (final contact in contacts) ...[
+                          Semantics(
+                            label: 'Search contacts on this device',
+                            child: TextField(
+                              key: const Key('contact-search'),
+                              controller: _searchController,
+                              onChanged: (_) => setState(() {}),
+                              decoration: const InputDecoration(
+                                labelText: 'Search contacts',
+                                prefixIcon: Icon(Icons.search_rounded),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: EchatSpacing.md),
+                          if (visibleContacts.isEmpty)
+                            const Card(
+                              child: Padding(
+                                padding: EdgeInsets.all(EchatSpacing.lg),
+                                child: EchatEmptyState(
+                                  icon: Icons.search_off_rounded,
+                                  title: 'No matching contacts',
+                                  message:
+                                      'Try another name, device ID, fingerprint, or trust state.',
+                                ),
+                              ),
+                            ),
+                          for (final contact in visibleContacts) ...[
                             _ContactCard(
                               contact: contact,
                               onTap: () => _openContact(contact),
@@ -341,10 +387,7 @@ class _ContactCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: EchatSpacing.sm),
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      color: EchatColors.muted,
-                    ),
+                    Icon(Icons.chevron_right_rounded, color: EchatColors.muted),
                   ],
                 ),
                 const SizedBox(height: EchatSpacing.md),
@@ -437,25 +480,96 @@ class ContactDetailsScreen extends StatefulWidget {
 class _ContactDetailsScreenState extends State<ContactDetailsScreen> {
   late AppContact _contact;
   final TextEditingController _fingerprintController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
   bool _busy = false;
   String? _message;
+  String _sessionSummary = 'No saved session';
 
   @override
   void initState() {
     super.initState();
     _contact = widget.initialContact;
+    _nameController.text = _contact.displayAlias;
     _reload();
   }
 
   @override
   void dispose() {
     _fingerprintController.dispose();
+    _nameController.dispose();
     super.dispose();
   }
 
   Future<void> _reload() async {
-    final current = await widget.controller.contact(_contact.deviceId);
-    if (mounted && current != null) setState(() => _contact = current);
+    try {
+      final values = await Future.wait<Object?>([
+        widget.controller.contact(_contact.deviceId),
+        widget.controller.conversations(),
+      ]);
+      if (!mounted) return;
+      final current = values[0] as AppContact?;
+      final conversations = values[1] as List<AppConversation>;
+      setState(() {
+        if (current != null) {
+          _contact = current;
+          _nameController.text = current.displayAlias;
+        }
+        final matchingSessions = conversations.where(
+          (conversation) => conversation.peerDeviceId == _contact.deviceId,
+        );
+        final session = matchingSessions.isEmpty
+            ? null
+            : matchingSessions.first.sessionStatus;
+        _sessionSummary = session == null
+            ? 'No saved session'
+            : _sessionStatusLabel(session);
+      });
+    } on Object {
+      if (mounted) {
+        setState(() => _message = 'Contact details could not be refreshed.');
+      }
+    }
+  }
+
+  Future<void> _saveDisplayName() async {
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      _contact = await widget.controller.updateContactDisplayName(
+        deviceId: _contact.deviceId,
+        displayName: _nameController.text,
+      );
+      _message = 'Contact name saved on this device.';
+    } on Object {
+      _message = 'Contact name could not be saved. Use 1 to 64 characters.';
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _confirmRevoke() async {
+    final shouldRevoke = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Revoke this contact?'),
+        content: const Text(
+          'This device will no longer trust or start sessions with this contact. The revoked identity remains recorded locally as a safety tombstone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Revoke contact'),
+          ),
+        ],
+      ),
+    );
+    if (shouldRevoke == true) await _revoke();
   }
 
   Future<void> _verify() async {
@@ -554,6 +668,40 @@ class _ContactDetailsScreenState extends State<ContactDetailsScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
+                  Semantics(
+                    label: 'Local contact display name',
+                    child: TextField(
+                      key: const Key('contact-display-name'),
+                      controller: _nameController,
+                      maxLength: 64,
+                      textInputAction: TextInputAction.done,
+                      decoration: const InputDecoration(
+                        labelText: 'Name on this device',
+                        helperText:
+                            'This label is local and does not change identity or trust.',
+                      ),
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Semantics(
+                      label: 'Save contact display name',
+                      button: true,
+                      child: FilledButton.tonal(
+                        key: const Key('save-contact-display-name'),
+                        onPressed: _busy ? null : _saveDisplayName,
+                        child: const Text('Save name'),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Device ID',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                  SelectableText(_contact.deviceId),
+                  const SizedBox(height: 16),
                   const Text(
                     'Trust status',
                     style: TextStyle(fontWeight: FontWeight.w600),
@@ -576,6 +724,13 @@ class _ContactDetailsScreenState extends State<ContactDetailsScreen> {
                   ),
                   const SizedBox(height: 8),
                   SelectableText(_contact.fingerprint),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Session status',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(_sessionSummary),
                 ],
               ),
             ),
@@ -625,16 +780,36 @@ class _ContactDetailsScreenState extends State<ContactDetailsScreen> {
           ],
           if (verified) ...[
             const SizedBox(height: 16),
-            Semantics(
-              label: 'Start 1-to-1 session',
-              button: true,
-              child: FilledButton.tonalIcon(
-                key: const Key('start-conversation'),
-                onPressed: _busy ? null : _startConversation,
-                icon: const Icon(Icons.chat_bubble_outline_rounded),
-                label: const Text('Start 1-to-1 session'),
+            if (!widget.controller.sessionExchangeAvailable)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Session exchange unavailable',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'This build has no delivery gateway for signed session-initiation and response messages. A verified contact alone does not establish a session.',
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Semantics(
+                label: 'Start 1-to-1 session',
+                button: true,
+                child: FilledButton.tonalIcon(
+                  key: const Key('start-conversation'),
+                  onPressed: _busy ? null : _startConversation,
+                  icon: const Icon(Icons.chat_bubble_outline_rounded),
+                  label: const Text('Start 1-to-1 session'),
+                ),
               ),
-            ),
           ],
           if (!revoked) ...[
             const SizedBox(height: 12),
@@ -643,7 +818,7 @@ class _ContactDetailsScreenState extends State<ContactDetailsScreen> {
               button: true,
               child: OutlinedButton.icon(
                 key: const Key('revoke-contact'),
-                onPressed: _busy ? null : _revoke,
+                onPressed: _busy ? null : _confirmRevoke,
                 icon: const Icon(Icons.block_rounded),
                 label: const Text('Revoke contact on this device'),
               ),
@@ -665,4 +840,14 @@ String _trustLabel(AppTrustStatus status) => switch (status) {
   AppTrustStatus.identityChanged =>
     'Identity changed — re-verification required',
   AppTrustStatus.revoked => 'Contact revoked',
+};
+
+String _sessionStatusLabel(AppSessionStatus status) => switch (status) {
+  AppSessionStatus.notStarted => 'Not started',
+  AppSessionStatus.requestPending => 'Session request pending',
+  AppSessionStatus.responsePendingDelivery =>
+    'Session response pending delivery',
+  AppSessionStatus.established => 'Established',
+  AppSessionStatus.closed => 'Closed',
+  AppSessionStatus.restoredNeedsReview => 'Restored — review required',
 };

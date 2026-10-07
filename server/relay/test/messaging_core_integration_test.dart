@@ -90,7 +90,7 @@ class _Harness {
       localDeviceId: sender.deviceId,
     );
 
-    final service = RelayService();
+    final service = RelayService(queueStore: MemoryRelayQueueStore());
     final api = RelayApi(
       service: service,
       authenticator: CallbackRelayAuthenticator((header) async {

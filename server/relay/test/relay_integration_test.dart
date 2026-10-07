@@ -112,7 +112,11 @@ class _ApiFixture {
 }
 
 _ApiFixture _api({RelayConfig config = const RelayConfig(), DateTime Function()? clock}) {
-  final service = RelayService(config: config, clock: clock);
+  final service = RelayService(
+    config: config,
+    clock: clock,
+    queueStore: MemoryRelayQueueStore(),
+  );
   return _ApiFixture(
     service: service,
     api: RelayApi(service: service, authenticator: _authenticator(), config: config),
@@ -216,7 +220,7 @@ void main() {
       await api.service.submit(authenticatedSenderRouteId: _senderRoute, packet: packet);
       await api.service.acknowledge(authenticatedRecipientRouteId: _recipientRoute, packetId: packet.packetId);
       now = now.add(const Duration(hours: 1));
-      api.service.cleanup();
+      await api.service.cleanup();
 
       expect(
         (await api.service.submit(authenticatedSenderRouteId: _senderRoute, packet: packet)).state,
@@ -232,7 +236,7 @@ void main() {
       await api.service.submit(authenticatedSenderRouteId: _senderRoute, packet: packet);
       now = now.add(const Duration(minutes: 2));
 
-      expect(api.service.cleanup(), 0);
+      expect(await api.service.cleanup(), 0);
       expect(api.service.pendingPacketCount, 0);
       expect((await api.service.submit(authenticatedSenderRouteId: _senderRoute, packet: packet)).state, 'expired');
       await expectLater(api.service.receive(authenticatedRecipientRouteId: _recipientRoute), completion(isEmpty));
@@ -388,7 +392,7 @@ void main() {
     test('concurrent request limit activates', () async {
       final enteredAuthentication = Completer<void>();
       final continueAuthentication = Completer<void>();
-      final service = RelayService();
+      final service = RelayService(queueStore: MemoryRelayQueueStore());
       final api = RelayApi(
         service: service,
         authenticator: CallbackRelayAuthenticator((header) async {
@@ -439,7 +443,7 @@ void main() {
       expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
       encryptedPacket: serializedEnvelope,
     );
-    final service = RelayService();
+    final service = RelayService(queueStore: MemoryRelayQueueStore());
     final api = RelayApi(
       service: service,
       authenticator: CallbackRelayAuthenticator((header) async {

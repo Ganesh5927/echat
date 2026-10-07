@@ -290,7 +290,7 @@ void main() {
       expect(establishedB.localDeviceId, deviceBIdentity.deviceId);
       expect(establishedB.remoteDeviceId, deviceAIdentity.deviceId);
 
-      final relayService = RelayService();
+      final relayService = RelayService(queueStore: MemoryRelayQueueStore());
       final submissions = <_ObservedSubmission>[];
       late final _RelayHarness relay;
       final api = RelayApi(

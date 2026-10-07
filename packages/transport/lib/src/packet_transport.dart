@@ -1,7 +1,13 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-enum TransportConnectionState { disconnected, connecting, connected }
+enum TransportConnectionState {
+  disconnected,
+  connecting,
+  authenticating,
+  authenticationFailed,
+  connected,
+}
 
 enum RelayPacketState { queued, delivered }
 
@@ -12,10 +18,9 @@ class TransportException implements Exception {
   final int? statusCode;
 
   @override
-  String toString() =>
-      statusCode == null
-          ? 'TransportException: $code'
-          : 'TransportException: $code ($statusCode)';
+  String toString() => statusCode == null
+      ? 'TransportException: $code'
+      : 'TransportException: $code ($statusCode)';
 }
 
 class PacketSubmission {
@@ -227,6 +232,7 @@ class PacketReceipt {
 
 abstract interface class PacketTransport {
   TransportConnectionState get connectionState;
+  bool get isAuthenticated;
   Stream<TransportConnectionState> get connectionStates;
 
   Future<void> connect();

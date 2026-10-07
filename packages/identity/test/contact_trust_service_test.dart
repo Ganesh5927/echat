@@ -101,6 +101,43 @@ void main() {
   });
 
   test(
+    'local display name survives identity changes without changing trust',
+    () async {
+      final original = await _newIdentity();
+      final replacement = await _newIdentity();
+      final changed = _withDeviceId(replacement, original.deviceId);
+      final trust = ContactTrustService(store: MemoryContactTrustStore());
+      await trust.verifyContact(original);
+
+      final named = await trust.updateDisplayName(
+        original.deviceId,
+        '  Alex  ',
+      );
+      expect(named.displayName, 'Alex');
+      expect(named.fingerprint, original.fingerprint);
+      expect(named.state, ContactTrustState.verified);
+
+      final changedRecord = await trust.observeIdentity(changed);
+      expect(changedRecord.displayName, 'Alex');
+      expect(changedRecord.state, ContactTrustState.identityChanged);
+
+      final reverified = await trust.reverifyChangedIdentity(changed);
+      expect(reverified.displayName, 'Alex');
+      expect(reverified.state, ContactTrustState.verified);
+      expect(reverified.fingerprint, changed.fingerprint);
+
+      final revoked = await trust.revokeContact(original.deviceId);
+      expect(revoked.displayName, 'Alex');
+      expect(revoked.state, ContactTrustState.revoked);
+
+      final restored = ContactTrustRecord.fromJson(
+        revoked.toJson()..remove('displayName'),
+      );
+      expect(restored.displayName, isNull);
+    },
+  );
+
+  test(
     'unexpected key change blocks trust until candidate is explicitly reverified',
     () async {
       final original = await _newIdentity();

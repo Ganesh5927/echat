@@ -8,14 +8,14 @@ environment:
 
 dependencies:
   crypto: ^3.0.7
+  cryptography: ^2.7.1
   echat_transport:
     path: ../../packages/transport
+  echat_identity:
+    path: ../../packages/identity
   shelf: ^1.4.2
 
 dev_dependencies:
-  cryptography: ^2.7.1
-  echat_identity:
-    path: ../../packages/identity
   echat_messaging:
     path: ../../packages/messaging
   echat_protocol:

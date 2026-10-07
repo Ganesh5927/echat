@@ -110,6 +110,9 @@ class _Transport implements PacketTransport {
   TransportConnectionState get connectionState => _state;
 
   @override
+  bool get isAuthenticated => _state == TransportConnectionState.connected;
+
+  @override
   Stream<TransportConnectionState> get connectionStates => _states.stream;
 
   @override

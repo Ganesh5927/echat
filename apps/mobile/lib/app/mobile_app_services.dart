@@ -8,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../application/messaging_controller.dart';
+import '../application/local_profile_service.dart';
 import '../application/session_exchange_gateway.dart';
 import '../platform/app_local_storage_key_provider.dart';
 import '../platform/app_secure_stores.dart';
@@ -17,18 +18,18 @@ import '../platform/unavailable_packet_transport.dart';
 class MobileAppServices {
   MobileAppServices._({
     required this.controller,
+    required this.profileService,
     required this.relayConfigurationMessage,
     required this.messageStore,
     required this.isTemporaryLocalMode,
   });
 
-  static const String relayCredentialStorageKey =
-      'echat.relay.bearer_credential';
   static const String defaultRelayOrigin = String.fromEnvironment(
     'ECHAT_RELAY_ORIGIN',
   );
 
   final MessagingController controller;
+  final LocalProfileService profileService;
   final String relayConfigurationMessage;
   final EncryptedMessageStore messageStore;
   final bool isTemporaryLocalMode;
@@ -40,6 +41,7 @@ class MobileAppServices {
     EncryptedRecordBackend? messageBackend,
     EncryptedRecordBackend? contactTrustBackend,
     EncryptedRecordBackend? sessionBackend,
+    EncryptedRecordBackend? profileBackend,
     PacketTransport? packetTransport,
     SessionExchangeGateway sessionExchangeGateway =
         const UnavailableSessionExchangeGateway(),
@@ -54,6 +56,12 @@ class MobileAppServices {
 
       if (kIsWeb) {
         final keyProvider = AppLocalStorageKeyProvider(store: secureValues);
+        final profileService = LocalProfileService(
+          store: EncryptedProfileStore(
+            backend: profileBackend ?? MemoryEncryptedRecordBackend(),
+            keyProvider: keyProvider.call,
+          ),
+        );
         final identityService = IdentityService(
           store: AppSecureIdentityStore(secureStore: secureValues),
         );
@@ -79,7 +87,7 @@ class MobileAppServices {
         final configuredTransport = packetTransport == null
             ? await _buildTransport(
                 relayOrigin: relayOrigin,
-                secureStore: secureValues,
+                identityService: identityService,
               )
             : (
                 packetTransport,
@@ -96,6 +104,7 @@ class MobileAppServices {
         );
         return MobileAppServices._(
           controller: controller,
+          profileService: profileService,
           relayConfigurationMessage: configuredTransport.$2,
           messageStore: messageStore,
           isTemporaryLocalMode: true,
@@ -115,7 +124,18 @@ class MobileAppServices {
       final sessionDirectory = Directory(
         '${appDirectory.path}${Platform.pathSeparator}sessions',
       );
+      final profileDirectory = Directory(
+        '${appDirectory.path}${Platform.pathSeparator}profile',
+      );
       final keyProvider = AppLocalStorageKeyProvider(store: secureValues);
+      final profileService = LocalProfileService(
+        store: EncryptedProfileStore(
+          backend:
+              profileBackend ??
+              FileEncryptedRecordBackend(directory: profileDirectory),
+          keyProvider: keyProvider.call,
+        ),
+      );
 
       final identityService = IdentityService(
         store: AppSecureIdentityStore(secureStore: secureValues),
@@ -148,7 +168,7 @@ class MobileAppServices {
       final configuredTransport = packetTransport == null
           ? await _buildTransport(
               relayOrigin: relayOrigin,
-              secureStore: secureValues,
+              identityService: identityService,
             )
           : (packetTransport, 'Transport supplied by application composition.');
       final trustService = ContactTrustService(store: contactTrustStore);
@@ -164,6 +184,7 @@ class MobileAppServices {
 
       final services = MobileAppServices._(
         controller: controller,
+        profileService: profileService,
         relayConfigurationMessage: configuredTransport.$2,
         messageStore: messageStore,
         isTemporaryLocalMode: false,
@@ -174,6 +195,12 @@ class MobileAppServices {
     } on Object {
       final fallbackKeyProvider = AppLocalStorageKeyProvider(
         store: fallbackSecureStore,
+      );
+      final fallbackProfileService = LocalProfileService(
+        store: EncryptedProfileStore(
+          backend: MemoryEncryptedRecordBackend(),
+          keyProvider: fallbackKeyProvider.call,
+        ),
       );
       final fallbackIdentityService = IdentityService(
         store: AppSecureIdentityStore(secureStore: fallbackSecureStore),
@@ -212,6 +239,7 @@ class MobileAppServices {
       );
       return MobileAppServices._(
         controller: fallbackController,
+        profileService: fallbackProfileService,
         relayConfigurationMessage:
             'Local secure storage unavailable; relay and session exchange remain unavailable.',
         messageStore: fallbackMessageStore,
@@ -222,20 +250,13 @@ class MobileAppServices {
 
   static Future<(PacketTransport, String)> _buildTransport({
     required String relayOrigin,
-    required SecureValueStore secureStore,
+    required IdentityService identityService,
   }) async {
     final endpointText = relayOrigin.trim();
     if (endpointText.isEmpty) {
       return (
         UnavailablePacketTransport('relay_endpoint_not_configured'),
         'Relay endpoint is not configured.',
-      );
-    }
-    final credential = await secureStore.read(relayCredentialStorageKey);
-    if (credential == null || credential.isEmpty) {
-      return (
-        UnavailablePacketTransport('relay_credentials_not_configured'),
-        'Relay credentials are not configured in secure storage.',
       );
     }
     try {
@@ -249,9 +270,9 @@ class MobileAppServices {
       return (
         HttpsRelayTransport(
           endpoint: endpoint,
-          credentialProvider: () => secureStore.read(relayCredentialStorageKey),
+          identityService: identityService,
         ),
-        'HTTPS relay configured.',
+        'HTTPS relay configured; device registration is required on connect.',
       );
     } on Object {
       return (

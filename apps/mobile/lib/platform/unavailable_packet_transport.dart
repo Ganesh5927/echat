@@ -12,6 +12,9 @@ class UnavailablePacketTransport implements PacketTransport {
       TransportConnectionState.disconnected;
 
   @override
+  bool get isAuthenticated => false;
+
+  @override
   Stream<TransportConnectionState> get connectionStates => const Stream.empty();
 
   TransportException _unavailable() => TransportException(reason);
